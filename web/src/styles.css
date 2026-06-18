@@ -1,0 +1,509 @@
+/* Wariant wizualny A4 — ekspresyjny, "moment razem". Tokeny wierne prototypowi. */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #e9e4dc;
+  font-family: 'Hanken Grotesk', sans-serif;
+  color: #33302a;
+}
+
+::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cfc7b9;
+  border-radius: 99px;
+  border: 3px solid #f7f2ea;
+}
+
+.app {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+/* ---------- karta ---------- */
+.card {
+  width: min(720px, 100%);
+  height: min(860px, calc(100dvh - 48px)); /* 48px = padding .app góra+dół */
+  background: #f7f2ea;
+  border-radius: 18px;
+  box-shadow: 0 12px 40px -12px rgba(60, 50, 35, 0.28);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- nagłówek ---------- */
+.header {
+  flex: none;
+  height: 70px;
+  padding: 0 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #ebe1d2;
+  background: #fdfbf7;
+}
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.brand-title {
+  font: 500 22px 'Newsreader';
+  color: #33302a;
+}
+.brand-sub {
+  font: 400 13px 'Hanken Grotesk';
+  color: #a59c8a;
+}
+.avatars {
+  display: flex;
+  align-items: center;
+}
+.avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 600 13px 'Hanken Grotesk';
+  border: 2px solid #fdfbf7;
+}
+.avatar-her {
+  background: #e8c9b4;
+  color: #8a5333;
+}
+.avatar-him {
+  background: #cdd9c2;
+  color: #4f6244;
+  margin-left: -9px;
+}
+
+/* ---------- lista wiadomości ---------- */
+.messages {
+  flex: 1;
+  padding: 26px 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+}
+
+/* pusty stan (brak wiadomości na starcie) */
+.empty-state {
+  margin: auto;
+  max-width: 360px;
+  text-align: center;
+  color: #a59c8a;
+  font: 400 18px/1.55 'Newsreader';
+  font-style: italic;
+  text-wrap: pretty;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+}
+.row-advisor {
+  align-self: stretch;
+  flex-direction: row;
+  gap: 13px;
+}
+.row-her {
+  align-self: flex-start;
+  max-width: 72%;
+}
+.row-him {
+  align-self: flex-end;
+  max-width: 72%;
+  align-items: flex-end;
+}
+.row-together {
+  align-self: center;
+  max-width: 78%;
+  text-align: center;
+  align-items: center;
+  margin: 4px 0;
+}
+
+/* etykiety autora */
+.label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 3px 6px;
+  font: 600 12px 'Hanken Grotesk';
+}
+.label-her {
+  color: #a86b41;
+}
+.label-him {
+  color: #5e7551;
+}
+.label-together {
+  justify-content: center;
+  gap: 5px;
+  margin-bottom: 10px;
+  font: 600 11px 'Hanken Grotesk';
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #8a6f50;
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.dot-her {
+  background: #c98a5e;
+}
+.dot-him {
+  background: #7d9a6f;
+}
+.label-together .dot-him {
+  margin-left: -3px;
+}
+
+/* bąble */
+.bubble {
+  text-wrap: pretty;
+}
+.bubble-advisor {
+  background: #fff;
+  border-radius: 5px 16px 16px 16px;
+  padding: 15px 18px;
+  max-width: 88%;
+  box-shadow: 0 4px 14px -8px rgba(80, 60, 35, 0.22);
+  font: 400 17px/1.62 'Newsreader';
+  color: #3a352c;
+  min-height: 24px;
+}
+.bubble-her {
+  background: linear-gradient(135deg, #f4ddcd, #f6e7df);
+  color: #5a4434;
+  padding: 14px 18px;
+  border-radius: 4px 18px 18px 18px;
+  font: 400 16px/1.52 'Hanken Grotesk';
+  box-shadow: 0 4px 14px -10px rgba(150, 90, 50, 0.45);
+}
+.bubble-him {
+  background: linear-gradient(135deg, #dde7d4, #e8eee3);
+  color: #3e4b37;
+  padding: 14px 18px;
+  border-radius: 18px 4px 18px 18px;
+  font: 400 16px/1.52 'Hanken Grotesk';
+  box-shadow: 0 4px 14px -10px rgba(70, 100, 55, 0.4);
+}
+.bubble-together {
+  position: relative;
+  padding: 20px 26px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #f8ebde, #edf1e6);
+  box-shadow:
+    0 10px 30px -12px rgba(150, 110, 60, 0.4),
+    inset 0 0 0 1.5px rgba(190, 150, 110, 0.35);
+  font: 400 19px/1.5 'Newsreader';
+  color: #473a2c;
+}
+
+/* status wiadomości pary (wysyłanie / nie wysłano + retry) */
+.msg-status {
+  margin: 5px 4px 0;
+  font: 500 11px 'Hanken Grotesk';
+  color: #a59c8a;
+}
+.msg-retry {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  color: #b9774f;
+  text-decoration: underline;
+}
+.msg-retry:hover {
+  color: #9a5f3c;
+}
+
+/* awatar doradcy */
+.advisor-avatar {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid #e6dcc9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.advisor-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #b3a78f;
+}
+
+/* wskaźnik pisania */
+.typing {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.typing span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #b3a78f;
+  animation: blink 1.2s infinite ease-in-out;
+}
+.typing span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.typing span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes blink {
+  0%, 80%, 100% {
+    opacity: 0.3;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+/* prawa strona nagłówka: faza + awatary */
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+/* dyskretny wskaźnik fazy (bieżący miękki cel rozmowy) */
+.phase-pill {
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: #efe9dc;
+  color: #8a7f63;
+  font: 600 11px 'Hanken Grotesk';
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* panel „do omówienia później" — zaparkowane dygresje */
+.parked-panel {
+  flex: none;
+  margin: 0 30px 8px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #f3ece0;
+  border: 1px solid #e6dcc8;
+}
+.parked-title {
+  font: 700 10.5px 'Hanken Grotesk';
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #a08a5f;
+  margin-bottom: 6px;
+}
+.parked-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+}
+.parked-item + .parked-item {
+  border-top: 1px solid #ece2cf;
+}
+.parked-text {
+  font: 500 13px 'Hanken Grotesk';
+  color: #5a4f3a;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.parked-actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+.parked-btn {
+  border: none;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: #e6dcc8;
+  color: #6b5e44;
+  font: 600 11.5px 'Hanken Grotesk';
+}
+.parked-btn:hover {
+  background: #ddd0b6;
+}
+.parked-promote {
+  background: #c79a6a;
+  color: #fff;
+}
+.parked-promote:hover {
+  background: #b98a58;
+}
+.parked-dismiss {
+  background: transparent;
+  color: #b0a088;
+  padding: 4px 7px;
+}
+
+/* status sceniczny reżysera — obecność Advisora (słucha / czeka / pisze) */
+.advisor-status {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 30px 8px;
+  padding: 7px 14px;
+  border-radius: 12px;
+  background: #efe9dc;
+  color: #8a8170;
+  font: 500 12.5px 'Hanken Grotesk';
+  font-style: italic;
+}
+.advisor-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #b3a78f;
+  animation: blink 1.6s infinite ease-in-out;
+}
+/* gdy Advisor czeka na drugą stronę — cieplejszy, "oczekujący" akcent */
+.advisor-status-waiting {
+  background: #f3ece0;
+  color: #8a6f50;
+}
+.advisor-status-waiting .advisor-status-dot {
+  background: #c79a6a;
+}
+
+/* baner błędu */
+.error-banner {
+  flex: none;
+  margin: 0 30px 8px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #f6e0d8;
+  color: #8a4a33;
+  font: 500 13px 'Hanken Grotesk';
+}
+
+/* ---------- kompozytor ---------- */
+.composer {
+  flex: none;
+  padding: 16px 22px 20px;
+  border-top: 1px solid #ebe1d2;
+  background: #fdfbf7;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.pills {
+  display: flex;
+  background: #efe7da;
+  border-radius: 999px;
+  padding: 3px;
+}
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: none;
+  background: transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  font: 500 13px 'Hanken Grotesk';
+  color: #8a8170;
+}
+.pill-active.pill-her {
+  background: #fff;
+  color: #a86b41;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(120, 90, 50, 0.18);
+}
+.pill-active.pill-him {
+  background: #fff;
+  color: #5e7551;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(70, 100, 55, 0.18);
+}
+.pill-active.pill-together {
+  background: linear-gradient(95deg, #f6e5d6, #e6efdc);
+  color: #7a6047;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(120, 90, 50, 0.18);
+}
+
+.input-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  border-radius: 14px;
+  padding: 8px 8px 8px 16px;
+  box-shadow: inset 0 0 0 1.5px rgba(190, 150, 110, 0.4);
+}
+.input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: 400 15px 'Hanken Grotesk';
+  color: #33302a;
+}
+.input::placeholder {
+  color: #b3aa98;
+}
+.send {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border: none;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #c98a5e, #7d9a6f);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.send:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* responsywność: na wąskich ekranach karta zajmuje cały ekran */
+@media (max-width: 760px) {
+  .app {
+    padding: 0;
+  }
+  .card {
+    width: 100%;
+    height: 100dvh;
+    border-radius: 0;
+  }
+  .composer {
+    flex-wrap: wrap;
+  }
+}

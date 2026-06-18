@@ -1,0 +1,11 @@
+node_modules
+gen
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+.cdsrc-private.json
+dist
+
+# prywatna konfiguracja z kluczem API (szablon: couple-adviser.env.example)
+couple-adviser.env
