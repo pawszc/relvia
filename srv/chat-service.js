@@ -10,12 +10,34 @@
 const cds = require('@sap/cds');
 const advisor = require('./advisor/advisor');
 const { costUsd } = require('./advisor/pricing');
+const { activeModel } = require('./advisor/models');
 
 /** Zapis pojedynczego zdarzenia SSE do surowej odpowiedzi HTTP. */
 function sse(res, event, data) {
   res.write(`event: ${event}\n`);
   res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
+
+/**
+ * "Markdown B" — twarde czyszczenie odpowiedzi doradcy z artefaktów, których UI
+ * (czysty tekst) nie renderuje: znaczniki markdown i wiodące etykiety mówcy.
+ * Gwarancja niezależna od tego, czy model posłuchał instrukcji w personie.
+ */
+function sanitizeAdvisor(text) {
+  if (!text) return text;
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '$1') // **pogrubienie** → tekst
+    .replace(/\*([^*\n]+)\*/g, '$1') // *kursywa* → tekst
+    .replace(/\*/g, '') // osierocone gwiazdki
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '') // nagłówki markdown
+    .replace(/^\s{0,3}>\s?/gm, '') // cytaty blokowe
+    .replace(/^\s*\[[^\]]+\]\s*:?\s*/, '') // wiodąca etykieta np. "[On]:"
+    .trim();
+}
+
+/** Ciepłe pożegnanie doradcy przy wejściu w pauzę (krok 4). Szablon — 0 tokenów. */
+const SENDOFF_TEXT =
+  'Zostawiam Was z tym we dwoje — porozmawiajcie między sobą, choćby na spokojnie poza aplikacją. Gdy zechcecie, żebym znów się włączył, przełączcie mnie na „rozmawia" i po prostu napiszcie, jak Wam poszło.';
 
 /** Wiersz DB → kształt ChatMessage z kontraktu (shared/chat-contract.ts). */
 const toContract = (m) => ({
@@ -68,6 +90,7 @@ module.exports = function (srv) {
       advisorMode: (c && c.advisorMode) || 'LEADING',
       turnsSinceProgress: (c && c.turnsSinceProgress) || 0,
       escalationStreak: (c && c.escalationStreak) || 0,
+      lastComposerHint: c && c.lastComposerHint, // by decide nie powtarzał podpowiedzi
       parkedTopics: await loadParked(conversationId),
     };
   }
@@ -79,6 +102,23 @@ module.exports = function (srv) {
     if (decision.topic) patch.topic = decision.topic;
     if (typeof decision.turnsSinceProgress === 'number')
       patch.turnsSinceProgress = decision.turnsSinceProgress;
+    if (typeof decision.escalationStreak === 'number')
+      patch.escalationStreak = decision.escalationStreak; // rozpęd kłótni (krok 3)
+    patch.model = activeModel(); // zapis modelu na poziomie konwersacji
+    if (decision.composerHint) patch.lastComposerHint = decision.composerHint; // pamięć podpowiedzi
+
+    // krok 5: koszt warstwy DECYZJI (decide modelem). Narasta co turę (też WAIT).
+    if (decision.usage) {
+      const u = decision.usage;
+      patch.decideInputTokens = { '+=': u.inputTokens || 0 };
+      patch.decideOutputTokens = { '+=': u.outputTokens || 0 };
+      patch.decideCacheReadTokens = { '+=': u.cacheReadTokens || 0 };
+      patch.decideCacheCreationTokens = { '+=': u.cacheCreationTokens || 0 };
+      LOG.info(
+        `decyzja (konw. ${conversationId}) [${activeModel()}]: in=${u.inputTokens || 0} out=${u.outputTokens || 0} ~$${costUsd(u).toFixed(6)}`,
+      );
+    }
+
     await UPDATE(Conversations).set(patch).where({ ID: conversationId });
   }
 
@@ -98,8 +138,9 @@ module.exports = function (srv) {
   /** Loguje zużycie tokenów: tej wiadomości + zagregowane dla całej konwersacji. */
   async function logUsage(conversationId, advisorId, usage) {
     const c = usageColumns(usage);
+    const model = activeModel();
     LOG.info(
-      `wiadomość ${advisorId} (konw. ${conversationId}): in=${c.inputTokens} out=${c.outputTokens} cacheRead=${c.cacheReadTokens} cacheCreate=${c.cacheCreationTokens} ~$${costUsd(c).toFixed(6)}`,
+      `wiadomość ${advisorId} (konw. ${conversationId}) [${model}]: in=${c.inputTokens} out=${c.outputTokens} cacheRead=${c.cacheReadTokens} cacheCreate=${c.cacheCreationTokens} ~$${costUsd(c).toFixed(6)}`,
     );
     const agg = await SELECT.one
       .from(Messages)
@@ -111,7 +152,7 @@ module.exports = function (srv) {
       )
       .where({ conversation_ID: conversationId });
     LOG.info(
-      `konwersacja ${conversationId} łącznie: in=${(agg && agg.inputTokens) || 0} out=${(agg && agg.outputTokens) || 0} cacheRead=${(agg && agg.cacheReadTokens) || 0} cacheCreate=${(agg && agg.cacheCreationTokens) || 0} ~$${costUsd(agg).toFixed(6)}`,
+      `konwersacja ${conversationId} łącznie [${model}]: in=${(agg && agg.inputTokens) || 0} out=${(agg && agg.outputTokens) || 0} cacheRead=${(agg && agg.cacheReadTokens) || 0} cacheCreate=${(agg && agg.cacheCreationTokens) || 0} ~$${costUsd(agg).toFixed(6)}`,
     );
   }
 
@@ -119,7 +160,7 @@ module.exports = function (srv) {
   srv.on('startConversation', async (req) => {
     const ID = cds.utils.uuid();
     await INSERT.into(Conversations).entries({ ID, title: req.data.title });
-    // odczytujemy imiona (domyślne Ola/Tomek z schema.cds) i zwracamy je do UI
+    // odczytujemy imiona (domyślne Ona/On z schema.cds) i zwracamy je do UI
     const conv = await SELECT.one.from(Conversations).where({ ID });
     return { conversationId: ID, herName: conv.herName, hisName: conv.hisName };
   });
@@ -147,6 +188,25 @@ module.exports = function (srv) {
     const conv = await SELECT.one.from(Conversations).where({ ID: conversationId });
     const advisorCtx = { herName: conv && conv.herName, hisName: conv && conv.hisName };
 
+    // „TYLKO SŁUCHA" (PAUSED): doradca CAŁKOWICIE wyłączony — ZERO wywołań modelu.
+    // Para pisze między sobą; zapisujemy wiadomość i kończymy. Powrót = przełącznik na
+    // „rozmawia" (wtedy decide znów dostaje pełną historię, łącznie z tym, co tu padło).
+    if (conv && conv.advisorMode === 'PAUSED') {
+      const resP = req.http && req.http.res;
+      if (String(req.headers.accept || '').includes('text/event-stream') && resP) {
+        resP.writeHead(200, {
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          Connection: 'keep-alive',
+          'X-Accel-Buffering': 'no',
+        });
+        sse(resP, 'message.user', { message: toContract(userRow) });
+        resP.end();
+        return;
+      }
+      return { message: toContract(userRow) };
+    }
+
     const advisorId = cds.utils.uuid();
     const advisorSeq = seq + 1;
 
@@ -154,6 +214,7 @@ module.exports = function (srv) {
     // właśnie zapisaną wiadomość pary. Stan czytamy z DB (faza/kotwica/liczniki).
     const history = await loadHistory(conversationId);
     const state = await loadState(conversationId);
+
     let decision;
     try {
       decision = await advisor.decide(history, state, advisorCtx);
@@ -194,13 +255,14 @@ module.exports = function (srv) {
         phase: decision.phase,
         uiHint: decision.uiHint,
         nextSpeaker: decision.nextSpeaker,
+        composerHint: decision.composerHint,
       });
       if (phaseChanged) sse(res, 'phase.change', { phase: decision.phase, topic: decision.topic });
       if (decision.parkAdd) sse(res, 'parked.update', { topics: parkedTopics });
 
       // Advisor MILCZY — analizuje, ale nie dodaje dymki.
       if (!decision.shouldSpeak) {
-        sse(res, 'advisor.wait', { uiHint: decision.uiHint || 'Advisor słucha…' });
+        sse(res, 'advisor.wait', { uiHint: decision.uiHint || 'Doradca słucha w milczeniu…' });
         res.end();
         return;
       }
@@ -233,6 +295,7 @@ module.exports = function (srv) {
         return;
       }
 
+      acc = sanitizeAdvisor(acc); // Markdown B
       await INSERT.into(Messages).entries({
         ID: advisorId,
         conversation_ID: conversationId,
@@ -262,6 +325,7 @@ module.exports = function (srv) {
         usage = ev.usage || null;
       }
     }
+    acc = sanitizeAdvisor(acc); // Markdown B
     await INSERT.into(Messages).entries({
       ID: advisorId,
       conversation_ID: conversationId,
@@ -306,10 +370,45 @@ module.exports = function (srv) {
     return { ok: true };
   });
 
+  // --- pauza/wznowienie doradcy (krok 4) ------------------------------------
+  srv.on('setAdvisorMode', async (req) => {
+    const { conversationId, mode } = req.data;
+    if (!['LEADING', 'LISTENING', 'PAUSED'].includes(mode)) return req.reject(400, 'INVALID_MODE');
+    await UPDATE(Conversations)
+      .set({ advisorMode: mode, lastActivityAt: new Date().toISOString() })
+      .where({ ID: conversationId });
+    // wejście w pauzę → doradca dopisuje ciepłe pożegnanie (widoczny skutek kliknięcia)
+    if (mode === 'PAUSED') {
+      await INSERT.into(Messages).entries({
+        ID: cds.utils.uuid(),
+        conversation_ID: conversationId,
+        seq: await nextSeq(conversationId),
+        author: 'ADVISOR',
+        text: SENDOFF_TEXT,
+        kind: 'FULL',
+      });
+    }
+    return { ok: true };
+  });
+
   // --- zagregowane zużycie tokenów dla całej konwersacji --------------------
   srv.on('conversationUsage', async (req) => {
     const cid = req.data.conversationId;
-    const agg = await SELECT.one
+    // model + narastające liczniki decyzji zapisane na konwersacji
+    const conv = await SELECT.one
+      .from(Conversations)
+      .columns(
+        'model',
+        'decideInputTokens',
+        'decideOutputTokens',
+        'decideCacheReadTokens',
+        'decideCacheCreationTokens',
+      )
+      .where({ ID: cid });
+    const model = (conv && conv.model) || activeModel();
+
+    // GENERACJA (dymki doradcy) — suma po wiadomościach ADVISOR
+    const g = await SELECT.one
       .from(Messages)
       .columns(
         'sum(inputTokens) as inputTokens',
@@ -319,13 +418,40 @@ module.exports = function (srv) {
         'count(*) as messages',
       )
       .where({ conversation_ID: cid, author: 'ADVISOR' });
+
+    const gen = {
+      inputTokens: (g && g.inputTokens) || 0,
+      outputTokens: (g && g.outputTokens) || 0,
+      cacheReadTokens: (g && g.cacheReadTokens) || 0,
+      cacheCreationTokens: (g && g.cacheCreationTokens) || 0,
+    };
+    // DECYZJA (decide modelem) — z liczników na konwersacji
+    const dec = {
+      inputTokens: (conv && conv.decideInputTokens) || 0,
+      outputTokens: (conv && conv.decideOutputTokens) || 0,
+      cacheReadTokens: (conv && conv.decideCacheReadTokens) || 0,
+      cacheCreationTokens: (conv && conv.decideCacheCreationTokens) || 0,
+    };
+    const generationCostUsd = costUsd(gen, model);
+    const decideCostUsd = costUsd(dec, model);
+
     return {
-      inputTokens: (agg && agg.inputTokens) || 0,
-      outputTokens: (agg && agg.outputTokens) || 0,
-      cacheReadTokens: (agg && agg.cacheReadTokens) || 0,
-      cacheCreationTokens: (agg && agg.cacheCreationTokens) || 0,
-      messages: (agg && agg.messages) || 0,
-      costUsd: costUsd(agg),
+      // generacja
+      inputTokens: gen.inputTokens,
+      outputTokens: gen.outputTokens,
+      cacheReadTokens: gen.cacheReadTokens,
+      cacheCreationTokens: gen.cacheCreationTokens,
+      messages: (g && g.messages) || 0,
+      // decyzja
+      decideInputTokens: dec.inputTokens,
+      decideOutputTokens: dec.outputTokens,
+      decideCacheReadTokens: dec.cacheReadTokens,
+      decideCacheCreationTokens: dec.cacheCreationTokens,
+      // model + koszty (rozbicie + suma)
+      model,
+      generationCostUsd,
+      decideCostUsd,
+      costUsd: generationCostUsd + decideCostUsd,
     };
   });
 };

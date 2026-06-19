@@ -27,6 +27,9 @@ function toMessage(row: Record<string, unknown>): ChatMessage {
     author: row.author as ChatMessage['author'],
     text: String(row.text ?? ''),
     createdAt: String(row.createdAt ?? ''),
+    // zachowaj rodzaj dymki/diagnostykę (np. INTERVENTION) przy odświeżeniu/historii
+    ...(row.kind ? { kind: row.kind as ChatMessage['kind'] } : {}),
+    ...(row.decisionType ? { decisionType: row.decisionType as ChatMessage['decisionType'] } : {}),
   };
 }
 
@@ -79,8 +82,8 @@ export const httpChatClient: ChatClient = {
     const j = await r.json();
     return {
       conversationId: j.conversationId as string,
-      herName: (j.herName as string) ?? 'Ola',
-      hisName: (j.hisName as string) ?? 'Tomek',
+      herName: (j.herName as string) ?? 'Ona',
+      hisName: (j.hisName as string) ?? 'On',
     };
   },
 
@@ -130,5 +133,14 @@ export const httpChatClient: ChatClient = {
       body: JSON.stringify({ conversationId, topicId, action }),
     });
     if (!r.ok) throw new Error(`resolveParkedTopic: HTTP ${r.status}`);
+  },
+
+  async setAdvisorMode(conversationId: string, mode): Promise<void> {
+    const r = await fetch(`${BASE}/setAdvisorMode`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId, mode }),
+    });
+    if (!r.ok) throw new Error(`setAdvisorMode: HTTP ${r.status}`);
   },
 };

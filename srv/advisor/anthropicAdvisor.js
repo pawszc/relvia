@@ -1,6 +1,6 @@
 /**
  * Realna warstwa AI (Faza 3) — implementuje kontrakt AdvisorService przy użyciu
- * oficjalnego SDK Anthropic i modelu claude-sonnet-4-6, ze streamingiem tokenów.
+ * oficjalnego SDK Anthropic; model wybiera ADVISOR_MODEL (domyślnie haiku-4-5), ze streamingiem tokenów.
  *
  * Aktywne tylko gdy ADVISOR=anthropic (patrz advisor.js). Wymaga ANTHROPIC_API_KEY
  * w środowisku — klucz NIGDY nie trafia do przeglądarki (zostaje na serwerze).
@@ -9,14 +9,14 @@
  * więc handler CAP i front nie wymagają żadnych zmian.
  */
 const Anthropic = require('@anthropic-ai/sdk');
-const { decide } = require('./decisionRules');
+// reguły zostają jako FALLBACK (gdy model decyzyjny padnie/zwróci zły JSON/timeout)
+const { decide: rulesDecide, isCouple, isSubstantive } = require('./decisionRules');
+const { activeModel } = require('./models');
 
-const MODEL = 'claude-sonnet-4-6';
-
-// Krok 1: decyzja reżysera jest regułowa (wspólna z mockiem) — generacja realna.
-// Krok 5 podmieni to na mały model (claude-haiku) ze structured output.
 // Krótka instrukcja sterująca tonem/celem dymki wg typu decyzji.
 const DECISION_STEER = {
+  DEEPEN:
+    'Cel tej tury: POGŁĘB to, co właśnie powiedziała ta osoba. Odbij krótko jej uczucie/sedno (pokaż, że słyszysz) i zadaj JEDNO otwarte, łagodne pytanie, które pozwoli jej pójść głębiej — co za tym stoi, czego naprawdę potrzebuje, konkretny moment. Jeszcze NIE oddawaj głosu drugiej stronie i nie podsumowuj.',
   ASK_OTHER:
     'Cel tej tury: krótko docenić osobę, która właśnie napisała, i oddać głos drugiej stronie. NIE doradzaj jeszcze — najpierw poproś o jej perspektywę.',
   CLARIFY:
@@ -32,8 +32,14 @@ const DECISION_STEER = {
   SUMMARIZE:
     'Cel tej tury: sparafrazuj uczucia i potrzeby OBU stron, zanim cokolwiek zaproponujesz.',
   SAFETY_STOP:
-    'Cel tej tury: pojawił się sygnał zagrożenia. Z troską zatrzymaj rozmowę i zachęć do kontaktu z profesjonalistą lub służbami. Nie udawaj terapeuty.',
+    'Cel tej tury: pojawił się sygnał zagrożenia życia lub zdrowia. PRZERWIJ mediację — nie analizuj konfliktu i nie rozstrzygaj, kto ma rację. Ciepło, bez oceniania i bez paniki nazwij powagę tego, co słyszysz, powiedz, że teraz najważniejsze jest bezpieczeństwo, i zachęć do natychmiastowego kontaktu z profesjonalistą lub odpowiednimi służbami, podając konkretny telefon pomocy. Nie udawaj terapeuty. Krótko i z troską.',
 };
+
+/** Sterowanie tonem interwencji (krok 3), stopniowane wg rozpędu kłótni. */
+const interveneSteer = (streak) =>
+  (streak || 0) >= 2
+    ? 'Cel tej tury: napięcie eskaluje już kolejny raz. Bardzo krótko i spokojnie zaproponuj przerwę/oddech, poproś, by mówić o sobie („czuję…", „potrzebuję…") zamiast oskarżeń. Nie stawaj po żadnej stronie i nie analizuj — najpierw rozładuj. 1–2 zdania.'
+    : 'Cel tej tury: właśnie padły ostre słowa. Bardzo krótko i ciepło ostudź — nazwij emocje i poproś, by mówić o sobie zamiast oceniać drugą osobę. Nie doradzaj jeszcze, nie stawaj po stronie. 1–2 zdania.';
 
 /** Dodatkowa instrukcja, gdy reżyser parkuje dygresję — wróć do kotwicy tematu. */
 const parkSteer = (decision) =>
@@ -51,14 +57,16 @@ Twoja rola:
 - Jesteś neutralnym mediatorem — nie stajesz po żadnej stronie i nie oceniasz, kto ma rację.
 - Najpierw słuchasz i nazywasz uczucia oraz potrzeby obojga, zanim zaproponujesz cokolwiek konkretnego.
 - Zadajesz delikatne, otwarte pytania, które pomagają parze lepiej się zrozumieć.
-- Doceniasz, gdy mówią jednym głosem (wiadomości oznaczone [Razem]).
+- Doceniasz, gdy mówią jednym głosem (piszą razem).
 
 Styl:
 - Mów ciepło, spokojnie i z szacunkiem; bez oceniania, moralizowania i gotowych recept.
-- Odpowiadaj zwięźle — kilka zdań, naturalnym językiem, bez list i nagłówków.
-- Zwracaj się do obojga; jeśli to pomaga, odnieś się po imieniu do osoby, która właśnie napisała.
+- Odpowiadaj zwięźle — kilka zdań, naturalnym językiem.
+- Pisz zwykłą prozą: bez list, nagłówków, gwiazdek (*) i nawiasów kwadratowych.
+- Zwracaj się ciepło i bezpośrednio do obojga.
+- Odpowiadaj WYŁĄCZNIE po polsku. Cała wypowiedź ma być po polsku — nie wstawiaj pojedynczych słów, zwrotów ani znaków z innych języków lub alfabetów (np. cyrylicy). Jeśli ciśnie Ci się obce słowo, użyj polskiego odpowiednika.
 
-Wiadomości pary są poprzedzone etykietą mówcy w nawiasie kwadratowym, np. "[Ola]:", "[Tomek]:" lub "[Razem]:".
+Każda wiadomość pary jest poprzedzona etykietą w nawiasie kwadratowym oznaczającą, KTO pisze — to wyłącznie wewnętrzna wskazówka dla Ciebie. Nigdy nie powtarzaj tych etykiet w odpowiedzi.
 
 Bezpieczeństwo: jeśli pojawią się sygnały przemocy, zagrożenia lub krzywdy, z troską zachęć do kontaktu z profesjonalistą lub odpowiednimi służbami — nie udawaj, że zastępujesz terapeutę.`;
 
@@ -66,18 +74,42 @@ Bezpieczeństwo: jeśli pojawią się sygnały przemocy, zagrożenia lub krzywdy
 // znaczy: jeśli ustawisz ADVISOR=anthropic bez klucza, błąd pojawi się od razu.
 const client = new Anthropic();
 
-/** Etykieta mówcy do prefiksu wiadomości (imiona z kontekstu konwersacji). */
+const DEFAULT_HER = 'Ona';
+const DEFAULT_HIS = 'On';
+
+/** Czy para ma WŁASNE imiona (a nie domyślne Ona/On). */
+function hasNames(ctx) {
+  return (
+    !!(ctx.herName && ctx.hisName) && !(ctx.herName === DEFAULT_HER && ctx.hisName === DEFAULT_HIS)
+  );
+}
+
+/** Etykieta mówcy do wewnętrznego prefiksu wiadomości: imię (gdy ustawione) albo rola. */
 function speakerLabel(author, ctx) {
+  const named = hasNames(ctx);
   switch (author) {
     case 'HER':
-      return ctx.herName || 'Ona';
+      return named ? ctx.herName : 'kobieta';
     case 'HIM':
-      return ctx.hisName || 'On';
+      return named ? ctx.hisName : 'mężczyzna';
     case 'TOGETHER':
-      return 'Razem';
+      return 'razem';
     default:
-      return 'Doradca';
+      return 'doradca';
   }
+}
+
+/**
+ * Instrukcja, jak doradca ma się zwracać do pary:
+ *  - z imionami → może używać imion;
+ *  - bez imion (domyślne Ona/On) → naturalnie (Ty/Wy, opisowo), NIE jak do imienia,
+ *    i bez wstawiania etykiet z nawiasów do odpowiedzi.
+ */
+function nameSteer(ctx) {
+  if (hasNames(ctx)) {
+    return `Imiona rozmówców: kobieta = ${ctx.herName}, mężczyzna = ${ctx.hisName}. Możesz zwracać się do nich po imieniu.`;
+  }
+  return 'Para nie podała imion. Etykiety w nawiasach ([kobieta], [mężczyzna], [razem]) mówią tylko Tobie, kto pisze — nie wstawiaj ich w odpowiedzi i nie używaj słów „On"/„Ona"/„kobieta"/„mężczyzna" jak imienia. Zwracaj się bezpośrednio: do piszącej osoby na „Ty", do obojga na „Wy"; gdy musisz odróżnić, użyj naturalnego opisu (np. „Twój partner", „Twoja partnerka", „osoba, która właśnie napisała").';
 }
 
 /** Historia (ChatMessage[]) → wiadomości w formacie Anthropic (role user/assistant). */
@@ -89,21 +121,184 @@ function toMessages(history, ctx) {
   );
 }
 
+// ── KROK 5: decyzja reżysera realnym modelem (Haiku) ze structured output ──────
+
+/** Instrukcja decyzyjna: rola reżysera + kryteria typów. Bezpieczeństwo semantyczne. */
+const DECIDE_SYSTEM = `Jesteś „reżyserem" rozmowy pary z doradcą relacji. Po każdej wiadomości pary decydujesz, CZY i JAK doradca ma zareagować — doradca NIE odzywa się po każdej wypowiedzi. Oceniaj OSTATNIĄ wiadomość pary w kontekście całej rozmowy i podanego stanu. Zwróć decyzję jako obiekt JSON wg schematu.
+
+Typy ("type"):
+- WAIT — nie odzywaj się (shouldSpeak=false): para rozmawia MIĘDZY SOBĄ i nie oczekuje teraz Twojego głosu (kontynuuje własną myśl, ustala coś we dwoje) — daj przestrzeń. NIE używaj WAIT, gdy para zwraca się do Ciebie.
+- DEEPEN — POGŁĘBIENIE: ostatnia wypowiedź niesie uczucie lub treść, w której jest jeszcze coś do zrozumienia; odbij to i zadaj JEDNO otwarte pytanie do TEJ SAMEJ osoby (o uczucie, potrzebę, konkretny moment), zanim oddasz głos drugiej stronie lub sparafrazujesz.
+- ASK_OTHER — pierwsza osoba została już wysłuchana (albo jej odpowiedź się urywa), a druga jeszcze się nie wypowiedziała w tym wątku; krótko docen i oddaj głos drugiej (ustaw nextSpeaker).
+- CLARIFY — krótka, ogólna negacja bez treści („nieprawda!"); poproś o konkret.
+- REFRAME — rozmowa krąży wokół tego samego lub pojawia się dygresja; nazwij wspólną potrzebę, wróć do tematu (przy dygresji ustaw parkAdd).
+- NARROW — utknięcie w ogólnikach; poproś o jeden konkretny przykład.
+- CHOOSE — kilka wątków naraz; wybierz jeden, resztę odłóż.
+- PROPOSE — głęboka pętla; zaproponuj 1–3 małe kroki.
+- SUMMARIZE — obie strony wypowiedziały się „z treścią"; parafraza uczuć i potrzeb obojga.
+- INTERVENE — ESKALACJA (atak personalny, pogarda, wyzwiska, krzyk, obwinianie); krótka moderacja łagodząca. Ustaw kind="INTERVENTION".
+- SAFETY_STOP — BEZPIECZEŃSTWO: JAKIKOLWIEK realny sygnał przemocy (także domowej, ze strony partnera lub wobec dzieci), samookaleczenia, myśli samobójczych albo zagrożenia życia/zdrowia — w DOWOLNYM języku, także parafrazą, eufemizmem czy aluzją (np. „nie chcę (już/dłużej) żyć", „lepiej żeby mnie nie było", „zrobię sobie krzywdę", „boję się, że mnie skrzywdzi", „uderzył mnie"). ABSOLUTNY priorytet — przy realnej wątpliwości wybierz SAFETY_STOP. ALE odróżniaj realny sygnał od PRZENOŚNI/hiperboli („zabija mnie ta cisza", „umieram z tęsknoty", „ta praca mnie wykańcza", „mógłbym go zabić za to spóźnienie") — sama metafora to NIE jest zagrożenie. shouldSpeak=true.
+
+ZAWSZE się odezwij (shouldSpeak=true, NIE WAIT), gdy para zwraca się WPROST do doradcy albo prosi o jego zdanie, ocenę, radę, pomoc lub reakcję (np. „doradco…", „co o tym myślisz?", „a Ty jak to widzisz?", „powiedz szczerze", „poradź nam", „masz rację?"). Wybierz wtedy najwłaściwszy typ mówiący (zwykle SUMMARIZE albo PROPOSE) — zignorowanie bezpośredniego pytania jest błędem.
+
+TEMPO I GŁĘBIA — nie spiesz się. Zanim oddasz głos drugiej stronie (ASK_OTHER) albo sparafrazujesz, POGŁĘB perspektywę osoby, która mówi (DEEPEN) — ale TYLKO dopóki to produktywne. Pogłębiaj, gdy jej odpowiedź wnosi NOWĄ treść lub emocję, a sedno wciąż nie zostało nazwane. PRZESTAŃ pogłębiać i ruszaj dalej (ASK_OTHER, gdy druga strona jeszcze nie mówiła; inaczej SUMMARIZE), gdy: osoba wygląda na naprawdę wysłuchaną lub nazwała sedno, ALBO jej odpowiedź się urywa (krótka, w kółko to samo, zamknięta, „nie wiem"), ALBO pogłębiałeś już z nią około dwóch razy. Liczba pogłębień NIE jest sztywna — dla płytkiego/praktycznego tematu może być zero, dla trudnego emocjonalnie jedno–dwa. Dopasuj do tego, ile osoba realnie wnosi. Do rozwiązań (PROPOSE) przechodź dopiero, gdy obie strony czują się zrozumiane.
+
+Zasady kolejności: SAFETY_STOP > INTERVENE > (bezpośrednia prośba o głos) > DEEPEN/ASK_OTHER (wg powyższego tempa) > reszta.
+"kind": "FULL" dla zwykłych dymek, "INTERVENTION" dla INTERVENE.
+"topic": ustaw/utrzymaj krótką kotwicę tematu. "nextSpeaker": HER/HIM/TOGETHER dla ASK_OTHER.
+"composerHint": KRÓTKA (do ~8 słów) podpowiedź wpisana w pole tekstowe dla osoby, która ma teraz pisać. ZAWSZE w 2. osobie, skierowana WPROST do tej osoby jak polecenie/pytanie do niej (np. „opowiedz o…", „co czujesz, gdy…", „zacznij od „czuję…"") — NIGDY w 3. osobie ani opisowo o niej („opisz moment, kiedy poczuła się…" = ŹLE; popraw na „kiedy poczułaś się…"). Ciepła, naprowadzająca na konstruktywny krok i DOPASOWANA do tematu rozmowy (nie ogólnik). Przy ASK_OTHER skieruj ją do nextSpeaker. Gdy Twoja dymka już zadaje pytanie, niech composerHint będzie krótkim dopowiedzeniem formy. Różnicuj ją z tury na turę — nie powtarzaj tej samej.
+Liczników liczbowych NIE ustalasz — pomija je system.`;
+
+/** JSON Schema decyzji (tylko ocena jakościowa; liczniki liczy kod). */
+const DECIDE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    type: {
+      type: 'string',
+      enum: ['WAIT', 'DEEPEN', 'ASK_OTHER', 'CLARIFY', 'REFRAME', 'NARROW', 'CHOOSE', 'PROPOSE', 'SUMMARIZE', 'INTERVENE', 'SAFETY_STOP'],
+    },
+    shouldSpeak: { type: 'boolean' },
+    kind: { type: 'string', enum: ['FULL', 'MODERATION', 'INTERVENTION'] },
+    phase: { type: 'string', enum: ['OPENING', 'PERSPECTIVE_A', 'PERSPECTIVE_B', 'PARAPHRASE', 'CORE', 'AGREEMENT'] },
+    nextSpeaker: { type: 'string', enum: ['HER', 'HIM', 'TOGETHER'] },
+    topic: { type: 'string' },
+    composerHint: { type: 'string' },
+    parkAdd: { type: 'string' },
+    reason: { type: 'string' },
+  },
+  required: ['type', 'shouldSpeak', 'kind', 'phase'],
+};
+
+/** Woła model po decyzję (structured output). Zwraca surową decyzję + usage. */
+async function modelDecide(history, state, context) {
+  const parked = (state.parkedTopics || []).map((p) => p.text).join(' | ') || '(brak)';
+  const prevHint = state.lastComposerHint
+    ? ` Poprzednia podpowiedź do pola — NIE powtarzaj jej, zaproponuj wyraźnie inną: "${state.lastComposerHint}".`
+    : '';
+  const stateNote =
+    `Stan rozmowy: faza=${state.phase || 'OPENING'}; kotwica=${state.topic || '(brak)'}; ` +
+    `tryb=${state.advisorMode || 'LEADING'}; tur bez postępu=${state.turnsSinceProgress || 0}; ` +
+    `eskalacja=${state.escalationStreak || 0}; zaparkowane=${parked}.${prevHint}`;
+
+  const resp = await client.messages.create({
+    model: activeModel(),
+    max_tokens: 400,
+    thinking: { type: 'disabled' },
+    system: DECIDE_SYSTEM,
+    messages: [
+      ...toMessages(history, context),
+      { role: 'user', content: `${stateNote}\nOceń ostatnią wiadomość pary i zwróć decyzję reżysera jako JSON.` },
+    ],
+    output_config: { format: { type: 'json_schema', schema: DECIDE_SCHEMA } },
+  });
+
+  const block = resp.content.find((b) => b.type === 'text');
+  const d = JSON.parse(block.text);
+  const u = resp.usage || {};
+  d.usage = {
+    inputTokens: u.input_tokens || 0,
+    outputTokens: u.output_tokens || 0,
+    cacheReadTokens: u.cache_read_input_tokens || 0,
+    cacheCreationTokens: u.cache_creation_input_tokens || 0,
+  };
+  return d;
+}
+
+/** Ile razy z rzędu doradca już pogłębiał (DEEPEN) z OBECNYM mówcą — liczone z
+ *  historii (od ostatniej wypowiedzi drugiej strony). Bazuje na decisionType na Messages. */
+function deepenCountForCurrent(history) {
+  const couple = history.filter(isCouple);
+  const last = couple[couple.length - 1];
+  if (!last || last.author === 'TOGETHER') return 0;
+  let count = 0;
+  for (let i = history.length - 1; i >= 0; i--) {
+    const m = history[i];
+    if (m.author === 'ADVISOR') {
+      if (m.decisionType === 'DEEPEN') count++;
+    } else if (m.author !== last.author) {
+      break; // doszliśmy do wypowiedzi drugiej strony — koniec serii bieżącego mówcy
+    }
+  }
+  return count;
+}
+
+/**
+ * Domknięcie decyzji modelu: deterministyczne strażniki + liczniki.
+ * - GŁĘBIA: liczbę pogłębień (DEEPEN) dobiera MODEL adaptacyjnie (0–2 wg sytuacji).
+ *   Kod NIE wymusza dwójki — łapie tylko pętlę pytań (≥3 z rzędu) i zmusza do ruchu dalej.
+ * - liczniki (turnsSinceProgress, escalationStreak) liczy KOD (model słabo liczy);
+ *   WAIT nie rusza rozpędu rozmowy.
+ * - usage z modelu (d.usage) zostaje do rozliczenia tokenów decide.
+ */
+function finalizeDecision(d, history, state) {
+  const out = d;
+
+  const couple = history.filter(isCouple);
+  const last = couple[couple.length - 1];
+
+  // bezpiecznik adaptacyjnej głębi: gdyby model wpadł w pętlę pogłębiania (≥3 z rzędu
+  // z tą samą osobą), zmuszamy do ruchu — oddaj głos drugiej stronie, jeśli jeszcze nie
+  // mówiła; inaczej sparafrazuj.
+  if (out.type === 'DEEPEN' && last && deepenCountForCurrent(history) >= 3) {
+    const spokeHer = couple.some((m) => m.author === 'HER' || m.author === 'TOGETHER');
+    const spokeHim = couple.some((m) => m.author === 'HIM' || m.author === 'TOGETHER');
+    const otherUnspoken = last.author === 'HER' ? !spokeHim : !spokeHer;
+    if (last.author !== 'TOGETHER' && otherUnspoken) {
+      out.type = 'ASK_OTHER';
+      out.nextSpeaker = last.author === 'HER' ? 'HIM' : 'HER';
+    } else {
+      out.type = 'SUMMARIZE';
+    }
+    out.composerHint = undefined; // hint modelu był pod DEEPEN — niech zadziała fallback
+  }
+
+  // kind wyznacza TYP (nie ufamy modelowi): tylko INTERVENE = mała dymka,
+  // wszystko inne (w tym SAFETY_STOP!) = pełna, wyraźna dymka.
+  out.kind = out.type === 'INTERVENE' ? 'INTERVENTION' : 'FULL';
+
+  const tsp = state.turnsSinceProgress || 0;
+  const streak = state.escalationStreak || 0;
+  if (out.type === 'SAFETY_STOP') {
+    out.turnsSinceProgress = 0;
+    out.escalationStreak = 0;
+  } else if (out.type === 'WAIT') {
+    out.turnsSinceProgress = tsp; // milczenie (też w pauzie) nie rusza liczników
+    out.escalationStreak = streak;
+  } else {
+    const substantive = last ? isSubstantive(last.text) : false;
+    out.turnsSinceProgress = substantive ? 0 : tsp + 1;
+    out.escalationStreak = out.type === 'INTERVENE' ? streak + 1 : 0;
+  }
+
+  if (!out.topic && state.topic) out.topic = state.topic; // utrzymaj kotwicę
+  return out;
+}
+
 module.exports = {
-  decide(history, state, context = {}) {
-    return Promise.resolve(decide(history, state, context));
+  async decide(history, state = {}, context = {}) {
+    try {
+      const raw = await modelDecide(history, state, context);
+      return finalizeDecision(raw, history, state);
+    } catch (e) {
+      // niezawodność: model padł / zły JSON / timeout → reguły (PL fallback)
+      console.warn('[advisor] decide model error → fallback do reguł:', (e && e.message) || e);
+      return rulesDecide(history, state, context);
+    }
   },
 
   async *generateReply(history, context = {}, decision) {
     // System = stała persona (cache) + krótka instrukcja sterująca wg decyzji.
-    const steer = decision && DECISION_STEER[decision.type];
+    let steer = decision && DECISION_STEER[decision.type];
+    if (decision && decision.type === 'INTERVENE') steer = interveneSteer(decision.escalationStreak);
     const system = [{ type: 'text', text: PERSONA, cache_control: { type: 'ephemeral' } }];
+    system.push({ type: 'text', text: nameSteer(context) }); // jak zwracać się do pary
     if (steer) system.push({ type: 'text', text: steer });
     const park = parkSteer(decision);
     if (park) system.push({ type: 'text', text: park });
 
     const stream = client.messages.stream({
-      model: MODEL,
+      model: activeModel(),
       max_tokens: 1024,
       // Czat ma odpowiadać szybko — wyłączamy rozszerzone myślenie, by pierwszy
       // token pojawiał się od razu. (Można później dostroić jakość przez effort.)

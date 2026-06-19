@@ -1,5 +1,7 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type {
+  AdvisorDecisionType,
+  AdvisorMode,
   ChatClient,
   ChatMessage,
   ParkedAction,
@@ -7,6 +9,13 @@ import type {
   Phase,
   SenderAuthor,
 } from '@shared/chat-contract';
+
+/** Ostatnia decyzja reżysera — napędza „inteligentny kompozytor" (auto-autor + placeholder). */
+export interface LastDecision {
+  type: AdvisorDecisionType;
+  nextSpeaker?: SenderAuthor;
+  composerHint?: string; // kontekstowa podpowiedź do pola (z modelu); brak ⇒ fallback statyczny
+}
 
 export type SendStatus = 'sending' | 'sent' | 'failed';
 
@@ -30,6 +39,12 @@ export interface AdvisorStatus {
 
 const uid = () => crypto.randomUUID();
 const nowIso = () => new Date().toISOString();
+
+/** Status „na kogo doradca czeka" — gdy decyzja wskazuje następnego mówcę. */
+function waitHintFor(next: SenderAuthor, herName: string, hisName: string): string {
+  if (next === 'TOGETHER') return 'Doradca czeka na Waszą wspólną odpowiedź…';
+  return `Doradca czeka na odpowiedź: ${next === 'HER' ? herName : hisName}`;
+}
 const nextSeq = (messages: UiMessage[]) => messages.reduce((m, x) => Math.max(m, x.seq), 0) + 1;
 
 function appendToLast(messages: UiMessage[], text: string): UiMessage[] {
@@ -59,6 +74,9 @@ export interface UseConversation {
   messages: UiMessage[];
   advisorTyping: boolean;
   advisorStatus: AdvisorStatus; // obecność sceniczna reżysera
+  advisorMode: AdvisorMode; // LEADING / PAUSED (krok 4)
+  lastDecision: LastDecision | null; // ostatnia decyzja reżysera (kompozytor: auto-autor/placeholder)
+  idle: boolean; // długa cisza — delikatny heartbeat (krok 4)
   phase: Phase; // bieżący miękki cel rozmowy
   parkedTopics: ParkedTopic[]; // lista „do omówienia później"
   sending: boolean;
@@ -69,6 +87,7 @@ export interface UseConversation {
   send: (author: SenderAuthor, text: string) => Promise<void>;
   retry: (clientId: string) => Promise<void>;
   resolveParked: (topicId: string, action: ParkedAction) => Promise<void>;
+  setMode: (mode: AdvisorMode) => Promise<void>; // pauza/wznowienie doradcy
 }
 
 export function useConversation(client: ChatClient): UseConversation {
@@ -80,11 +99,24 @@ export function useConversation(client: ChatClient): UseConversation {
   const [advisorStatus, setAdvisorStatus] = useState<AdvisorStatus>({ kind: 'idle' });
   const [phase, setPhase] = useState<Phase>('OPENING');
   const [parkedTopics, setParkedTopics] = useState<ParkedTopic[]>([]);
+  const [advisorMode, setAdvisorModeState] = useState<AdvisorMode>('LEADING');
+  const [lastDecision, setLastDecision] = useState<LastDecision | null>(null);
+  const [idle, setIdle] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // imiona pary — domyślne do czasu utworzenia konwersacji, potem z bazy
-  const [herName, setHerName] = useState('Ola');
-  const [hisName, setHisName] = useState('Tomek');
+  const [herName, setHerName] = useState('Ona');
+  const [hisName, setHisName] = useState('On');
+
+  // Lekki heartbeat bezczynności (krok 4): po dłuższej ciszy pokaż delikatny
+  // status. Czysto kliencki — zero tokenów, zero wywołań serwera. Reset przy
+  // każdej aktywności (nowa wiadomość, wysyłka, zmiana trybu). Nie w pauzie.
+  useEffect(() => {
+    setIdle(false);
+    if (messages.length === 0 || sending || advisorMode === 'PAUSED') return;
+    const t = setTimeout(() => setIdle(true), 120000); // 2 min ciszy
+    return () => clearTimeout(t);
+  }, [messages, sending, advisorMode]);
 
   /**
    * ⤵ TU DZIEJE SIĘ LENIWE TWORZENIE KONWERSACJI.
@@ -113,6 +145,8 @@ export function useConversation(client: ChatClient): UseConversation {
       // zapamiętujemy "spoczynkowy" status z decyzji (np. ASK_OTHER → czeka na drugą stronę)
       let restingHint: string | undefined;
       let restingNextSpeaker: SenderAuthor | undefined;
+      // rodzaj dymki znany już z decyzji → ustawiamy go przy starcie (bez przeskoku renderu)
+      let pendingKind: UiMessage['kind'] = 'FULL';
 
       let confirmed = false;
       try {
@@ -139,6 +173,8 @@ export function useConversation(client: ChatClient): UseConversation {
               // reżyser właśnie ocenił turę; po dymce hint może zostać statusem spoczynkowym
               restingHint = ev.uiHint;
               restingNextSpeaker = ev.nextSpeaker;
+              pendingKind = ev.decision === 'INTERVENE' ? 'INTERVENTION' : 'FULL';
+              setLastDecision({ type: ev.decision, nextSpeaker: ev.nextSpeaker, composerHint: ev.composerHint });
               setAdvisorStatus({ kind: 'listening', hint: ev.uiHint });
               break;
             case 'advisor.wait':
@@ -155,7 +191,7 @@ export function useConversation(client: ChatClient): UseConversation {
             case 'advisor.start':
               setAdvisorTyping(true);
               setAdvisorStatus({ kind: 'typing' });
-              setMessages((m) => [...m, { ...ev.message, text: '' }]);
+              setMessages((m) => [...m, { ...ev.message, text: '', kind: pendingKind }]);
               break;
             case 'advisor.delta':
               setMessages((m) => appendToLast(m, ev.text));
@@ -163,9 +199,12 @@ export function useConversation(client: ChatClient): UseConversation {
             case 'advisor.end':
               setAdvisorTyping(false);
               setMessages((m) => setLastMeta(setLastText(m, ev.text), { kind: ev.kind }));
-              // po wypowiedzi: jeśli decyzja oddawała głos drugiej stronie, zostaw to jako status
+              // po wypowiedzi: jeśli decyzja oddawała głos komuś, pokaż NA KOGO czekamy
+              // (hint z reguł, a gdy go brak — np. model — budujemy z nextSpeaker + imion)
               setAdvisorStatus(
-                restingNextSpeaker ? { kind: 'waiting', hint: restingHint } : { kind: 'idle' },
+                restingNextSpeaker
+                  ? { kind: 'waiting', hint: restingHint ?? waitHintFor(restingNextSpeaker, herName, hisName) }
+                  : { kind: 'idle' },
               );
               break;
             case 'error':
@@ -188,7 +227,7 @@ export function useConversation(client: ChatClient): UseConversation {
         setSending(false);
       }
     },
-    [client],
+    [client, herName, hisName],
   );
 
   const send = useCallback(
@@ -254,6 +293,27 @@ export function useConversation(client: ChatClient): UseConversation {
       const s = await client.getState(conversationId);
       setParkedTopics(s.parkedTopics);
       setPhase(s.phase);
+      setAdvisorModeState(s.advisorMode);
+    },
+    [client, conversationId],
+  );
+
+  // Pauza/wznowienie doradcy (krok 4). Optymistycznie ustawiamy lokalnie, potem backend.
+  const setMode = useCallback(
+    async (mode: AdvisorMode) => {
+      if (!conversationId) return;
+      setAdvisorModeState(mode);
+      try {
+        await client.setAdvisorMode(conversationId, mode);
+        // „tylko słucha": doradca milknie → wyczyść status sceniczny i pokaż pożegnanie
+        if (mode === 'PAUSED') {
+          setAdvisorTyping(false);
+          setAdvisorStatus({ kind: 'idle' });
+          setMessages(await client.getHistory(conversationId));
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Nie udało się zmienić trybu doradcy.');
+      }
     },
     [client, conversationId],
   );
@@ -262,6 +322,9 @@ export function useConversation(client: ChatClient): UseConversation {
     messages,
     advisorTyping,
     advisorStatus,
+    advisorMode,
+    lastDecision,
+    idle,
     phase,
     parkedTopics,
     sending,
@@ -272,5 +335,6 @@ export function useConversation(client: ChatClient): UseConversation {
     send,
     retry,
     resolveParked,
+    setMode,
   };
 }

@@ -1,23 +1,25 @@
-import { useState } from 'react';
 import type { SenderAuthor } from '@shared/chat-contract';
 
 /**
- * Kompozytor: przełącznik autora (Ola / Razem / Tomek) + pole tekstowe.
- * Stan tekstu jest lokalny; wybrany autor przychodzi z góry (ChatScreen),
- * bo decyduje też o tym, jak wygląda pasek i placeholder.
- * Enter wysyła, Shift+Enter nie (zostawiamy miejsce na ewentualne wielolinie).
+ * Kompozytor: przełącznik autora (Ona / Razem / On) + pole tekstowe.
+ * Komponent prezentacyjny — tekst, placeholder i autor przychodzą z góry (ChatScreen),
+ * bo to ChatScreen prowadzi „inteligentny kompozytor" (auto-autor + placeholder wg
+ * decyzji reżysera). Enter wysyła, Shift+Enter nie.
  */
 
 interface Props {
   author: SenderAuthor;
   onAuthorChange: (a: SenderAuthor) => void;
-  onSend: (text: string) => void;
+  text: string;
+  onTextChange: (t: string) => void;
+  placeholder: string;
+  onSend: () => void;
   herName: string;
   hisName: string;
   disabled: boolean; // blokada na czas wysyłki / zanim hook gotowy
 }
 
-// kolejność i etykiety pigułek: Ola (HER) · Razem (TOGETHER) · Tomek (HIM)
+// kolejność i etykiety pigułek: Ona (HER) · Razem (TOGETHER) · On (HIM)
 const PILLS: { author: SenderAuthor; label: (h: string, m: string) => string }[] = [
   { author: 'HER', label: (h) => h },
   { author: 'TOGETHER', label: () => 'Razem' },
@@ -27,28 +29,14 @@ const PILLS: { author: SenderAuthor; label: (h: string, m: string) => string }[]
 export default function Composer({
   author,
   onAuthorChange,
+  text,
+  onTextChange,
+  placeholder,
   onSend,
   herName,
   hisName,
   disabled,
 }: Props) {
-  const [text, setText] = useState('');
-
-  // placeholder zależny od aktywnego autora
-  const placeholder =
-    author === 'TOGETHER'
-      ? 'Piszecie razem…'
-      : author === 'HER'
-        ? `Napisz jako ${herName}…`
-        : `Napisz jako ${hisName}…`;
-
-  // wyślij i wyczyść pole (ignoruj puste / gdy zablokowane)
-  const submit = () => {
-    if (!text.trim() || disabled) return;
-    onSend(text);
-    setText('');
-  };
-
   return (
     <div className="composer">
       {/* przełącznik autora; aktywna pigułka dostaje kropkę(-i) i styl */}
@@ -80,16 +68,16 @@ export default function Composer({
           className="input"
           value={text}
           placeholder={placeholder}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => onTextChange(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
-              submit();
+              onSend();
             }
           }}
           disabled={disabled}
         />
-        <button className="send" type="button" onClick={submit} disabled={disabled || !text.trim()}>
+        <button className="send" type="button" onClick={onSend} disabled={disabled || !text.trim()}>
           ↑
         </button>
       </div>

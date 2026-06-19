@@ -20,7 +20,7 @@ const SUMMARIZE = {
     'Dziękuję, że mówisz o tym tak wprost — to wymaga odwagi. Brzmi to dla mnie jak prośba o bycie zauważoną w tym, ile na sobie trzymasz, a nie tylko o sprawiedliwszy podział zadań. Powiedz mi proszę, gdybyś miała wskazać jedną rzecz, która dałaby Ci poczucie ulgi, co by to było?',
   ],
   HIM: [
-    'Słyszę, że bardzo się starasz, a mimo to towarzyszy Ci poczucie, że to wciąż nie wystarcza. To trudne i wyczerpujące uczucie, więc ważne, że je nazywasz na głos. Chciałbym lepiej zrozumieć Twoją stronę — co pomogłoby Ci uwierzyć, że Twój wysiłek naprawdę jest widziany przez Olę?',
+    'Słyszę, że bardzo się starasz, a mimo to towarzyszy Ci poczucie, że to wciąż nie wystarcza. To trudne i wyczerpujące uczucie, więc ważne, że je nazywasz na głos. Chciałbym lepiej zrozumieć Twoją stronę — co pomogłoby Ci uwierzyć, że Twój wysiłek naprawdę jest widziany przez drugą stronę?',
     'Dziękuję, że to powiedziałeś — krytyka, której z góry się spodziewasz, potrafi odbierać całą chęć działania. Nie chcę tego upraszczać, chcę to dobrze zrozumieć. Kiedy ostatnio poczułeś, że zrobiłeś coś dobrze i że zostało to zauważone w domu?',
   ],
   TOGETHER: [
@@ -49,6 +49,14 @@ function replyText(decision, history, ctx) {
   switch (decision.type) {
     case 'SAFETY_STOP':
       return SAFETY_TEXT;
+    case 'INTERVENE':
+      return (decision.escalationStreak || 0) >= 2
+        ? 'Zróbmy krótką przerwę — temperatura rośnie i trudno się teraz nawzajem usłyszeć. Weźcie po oddechu; za chwilę spróbujcie powiedzieć to samo, ale o sobie: „czuję…”, „potrzebuję…”. Nie chcę, żeby padły słowa, których potem będziecie żałować.'
+        : 'Słyszę dużo emocji i napięcia. Zanim padnie odpowiedź — zatrzymajmy się na sekundę. Spróbujcie nazwać, co teraz czujecie, bez oceniania drugiej osoby. Jestem tu, żeby pomóc Wam się usłyszeć, a nie zranić.';
+    case 'DEEPEN': {
+      const who = speakerLabel(lastAuthor, ctx);
+      return `Zatrzymajmy się na chwilę przy tym, co mówisz, ${who}. Słyszę w tym coś ważnego. Opowiedz mi o tym trochę więcej — co czujesz najmocniej w takim momencie i czego najbardziej Ci wtedy brakuje?`;
+    }
     case 'ASK_OTHER': {
       const name = speakerLabel(decision.nextSpeaker || (lastAuthor === 'HER' ? 'HIM' : 'HER'), ctx);
       const heard = speakerLabel(lastAuthor, ctx);

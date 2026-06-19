@@ -41,6 +41,7 @@ export type AdvisorBubbleKind = 'FULL' | 'MODERATION' | 'INTERVENTION';
 /** Typ decyzji reżysera po turze pary. */
 export type AdvisorDecisionType =
   | 'WAIT' // milcz, zbieramy kontekst
+  | 'DEEPEN' // pogłęb: odbij + jedno otwarte pytanie do tej samej osoby
   | 'ASK_OTHER' // oddaj głos drugiej stronie
   | 'CLARIFY' // dopytaj o konkret (np. po "nieprawda!")
   | 'REFRAME' // przeramuj
@@ -67,6 +68,7 @@ export interface ConversationState {
   parkedTopics: ParkedTopic[];
   turnsSinceProgress: number; // wykrywanie pętli
   escalationStreak: number; // rozpęd kłótni
+  lastComposerHint?: string; // ostatnia podpowiedź do pola — by decide jej nie powtarzał
 }
 
 /** Wynik decide() — decyzja reżysera po turze. */
@@ -77,11 +79,15 @@ export interface AdvisorDecision {
   phase: Phase;
   nextSpeaker?: SenderAuthor; // dla ASK_OTHER
   uiHint?: string; // status sceniczny / podpowiedź gdy WAIT
+  composerHint?: string; // krótka, kontekstowa podpowiedź do pola (placeholder dla następnej osoby)
   parkAdd?: string; // dygresja do zaparkowania
   reason?: string; // diagnostyka
   // --- wartości stanu do persystencji (handler je zapisuje na Conversations) ---
   topic?: string; // kotwica ustalona/utrzymana w tej turze
   turnsSinceProgress?: number; // nowy licznik pętli po tej turze
+  escalationStreak?: number; // rozpęd kłótni po tej turze (krok 3)
+  // koszt wyprodukowania TEJ decyzji (krok 5: decide modelem). Reguły/mock = brak.
+  usage?: TokenUsage;
 }
 
 /** Zużycie tokenów jednej generacji doradcy (z odpowiedzi modelu Anthropic). */
@@ -128,6 +134,7 @@ export type ChatStreamEvent =
       phase: Phase;
       uiHint?: string;
       nextSpeaker?: SenderAuthor;
+      composerHint?: string; // kontekstowa podpowiedź do pola wpisywania (placeholder)
     }
   | { type: 'advisor.wait'; uiHint: string } // Advisor analizuje, ale nie dodaje dymki
   | { type: 'phase.change'; phase: Phase; topic?: string }
@@ -165,6 +172,8 @@ export interface ChatClient {
   getState(conversationId: string): Promise<UiConversationState>;
   /** Zmiana stanu zaparkowanego tematu (wróćmy teraz / załatwione / odrzuć). */
   resolveParkedTopic(conversationId: string, topicId: string, action: ParkedAction): Promise<void>;
+  /** Pauza/wznowienie doradcy (krok 4): PAUSED = „rozmawiajcie sami", LEADING = wróć. */
+  setAdvisorMode(conversationId: string, mode: AdvisorMode): Promise<void>;
 }
 
 /** Kontekst przekazywany do warstwy AI (np. imiona do prefiksów mówców). */

@@ -189,6 +189,33 @@ body {
   color: #3a352c;
   min-height: 24px;
 }
+
+/* krok 3: mała dymka interwencji/moderacji — wyśrodkowana, ciepła, dyskretna */
+.row-intervene {
+  align-self: center;
+  max-width: 80%;
+  text-align: center;
+  align-items: center;
+  margin: 2px 0;
+}
+.label-intervene {
+  font: 600 10px 'Hanken Grotesk';
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #b08a5e;
+  margin-bottom: 6px;
+}
+.bubble-intervene {
+  display: inline-block;
+  background: linear-gradient(95deg, #f4e6da, #ece3d2);
+  border: 1px solid #e6d3bf;
+  color: #6b5640;
+  padding: 12px 18px;
+  border-radius: 14px;
+  font: 400 15px/1.55 'Hanken Grotesk';
+  box-shadow: 0 4px 14px -10px rgba(150, 110, 60, 0.4);
+  text-wrap: pretty;
+}
 .bubble-her {
   background: linear-gradient(135deg, #f4ddcd, #f6e7df);
   color: #5a4434;
@@ -298,6 +325,50 @@ body {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
+}
+
+/* przełącznik trybu doradcy (krok 4): „rozmawia" / „tylko słucha" */
+.advisor-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.advisor-toggle-label {
+  font: 600 11px 'Hanken Grotesk';
+  letter-spacing: 0.02em;
+  color: #8a7f63;
+  white-space: nowrap;
+}
+.advisor-toggle-seg {
+  display: inline-flex;
+  border: 1px solid #ddd4c4;
+  background: #f1ebe0;
+  border-radius: 999px;
+  padding: 2px;
+}
+.advisor-toggle-opt {
+  border: 0;
+  background: transparent;
+  color: #8a7f63;
+  border-radius: 999px;
+  padding: 4px 11px;
+  font: 600 11px 'Hanken Grotesk';
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.advisor-toggle-opt:hover {
+  color: #6f6753;
+}
+.advisor-toggle-opt.is-active {
+  background: #fff;
+  color: #6f6753;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+/* gdy aktywne „tylko słucha" — cieplejszy, wyraźny stan ciszy */
+.advisor-toggle-listen.is-active {
+  background: linear-gradient(95deg, #f3e1d6, #e8e0cf);
+  color: #8a5f3c;
 }
 
 /* panel „do omówienia później" — zaparkowane dygresje */

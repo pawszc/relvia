@@ -23,11 +23,13 @@ service ChatService @(path: '/chat') {
   @readonly
   entity ParkedTopics as projection on db.ParkedTopics;
 
-  /** Utworzenie nowej konwersacji. Zwraca jej identyfikator. */
+  /** Utworzenie nowej konwersacji. Zwraca identyfikator i imiona (domyślnie Ona/On). */
   action startConversation(
     title : String
   ) returns {
     conversationId : UUID;
+    herName        : String;
+    hisName        : String;
   };
 
   /**
@@ -74,13 +76,31 @@ service ChatService @(path: '/chat') {
     ok : Boolean;
   };
 
+  /** Pauza/wznowienie doradcy (krok 4). mode: PAUSED („rozmawiajcie sami") / LEADING (wróć). */
+  action setAdvisorMode(
+    conversationId : UUID,
+    mode           : db.AdvisorMode
+  ) returns {
+    ok : Boolean;
+  };
+
   /** Zagregowane zużycie tokenów dla całej konwersacji (suma po wiadomościach). */
   function conversationUsage(conversationId : UUID) returns {
-    inputTokens         : Integer;
-    outputTokens        : Integer;
-    cacheReadTokens     : Integer;
-    cacheCreationTokens : Integer;
-    messages            : Integer; // liczba wiadomości doradcy (z generacją)
-    costUsd             : Decimal; // szacowany koszt w USD (cennik sonnet-4-6)
+    // generacja (dymki doradcy)
+    inputTokens               : Integer;
+    outputTokens              : Integer;
+    cacheReadTokens           : Integer;
+    cacheCreationTokens       : Integer;
+    messages                  : Integer; // liczba wiadomości doradcy (z generacją)
+    // decyzja (decide modelem, krok 5 — narasta co turę)
+    decideInputTokens         : Integer;
+    decideOutputTokens        : Integer;
+    decideCacheReadTokens     : Integer;
+    decideCacheCreationTokens : Integer;
+    // model + koszty (rozbicie + suma) w USD wg cennika tego modelu
+    model                     : String;
+    generationCostUsd         : Decimal;
+    decideCostUsd             : Decimal;
+    costUsd                   : Decimal;
   };
 }

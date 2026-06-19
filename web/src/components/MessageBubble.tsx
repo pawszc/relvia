@@ -51,7 +51,17 @@ function Status({ message, onRetry }: { message: UiMessage; onRetry: (id: string
 export default function MessageBubble({ message, herName, hisName, typing, onRetry }: Props) {
   // jeden case na autora — to tu mapujemy model (Author) na render A4
   switch (message.author) {
-    case 'ADVISOR':
+    case 'ADVISOR': {
+      // Krok 3: interwencja/moderacja → mała, wyróżniona dymka na środku.
+      const small = message.kind === 'INTERVENTION' || message.kind === 'MODERATION';
+      if (small) {
+        return (
+          <div className="row row-intervene">
+            <div className="label label-intervene">chwila spokoju</div>
+            <div className="bubble bubble-intervene">{typing ? <TypingDots /> : message.text}</div>
+          </div>
+        );
+      }
       return (
         <div className="row row-advisor">
           <span className="advisor-avatar">
@@ -60,6 +70,7 @@ export default function MessageBubble({ message, herName, hisName, typing, onRet
           <div className="bubble bubble-advisor">{typing ? <TypingDots /> : message.text}</div>
         </div>
       );
+    }
 
     case 'HER':
       return (

@@ -14,9 +14,9 @@ Wariant wizualny: **A4** (ekspresyjny, wiadomość „razem" jako hero na osi).
 ## 1. Zakres i granice
 
 - Powierzchnia **read-only OData** dla historii (`Conversations`, `Messages`, `ParkedTopics`).
-- **Akcje**: `startConversation`, `sendMessage`, `conversationState`, `resolveParkedTopic`.
+- **Akcje**: `startConversation`, `sendMessage`, `conversationState`, `resolveParkedTopic`, `setAdvisorMode`; **funkcja** `conversationUsage`.
 - `sendMessage` zwraca **strumień SSE** (`text/event-stream`), nie JSON OData.
-- Warstwa AI jest ukryta za interfejsem `AdvisorService` (`decide` + `generateReply`). **Domyślnie MOCK — zero tokenów** (`ADVISOR=mock`). Realny Anthropic (`ADVISOR=anthropic`): decyzja regułowa, generacja `claude-sonnet-4-6`; mały model decyzyjny (`claude-haiku`) — krok 5.
+- Warstwa AI jest ukryta za interfejsem `AdvisorService` (`decide` + `generateReply`). **Domyślnie MOCK — zero tokenów** (`ADVISOR=mock`). Realny Anthropic (`ADVISOR=anthropic`): **oba kroki na `claude-haiku-4-5`** (`ADVISOR_MODEL`) — `decide` przez structured output (odpala się co turę), generacja streamingiem (tylko gdy `shouldSpeak`); reguły służą jako fallback. Model wymienny przez `ADVISOR_MODEL`, wycena auto wg modelu ([`srv/advisor/models.js`](srv/advisor/models.js)).
 
 ---
 
@@ -24,8 +24,8 @@ Wariant wizualny: **A4** (ekspresyjny, wiadomość „razem" jako hero na osi).
 
 | Encja | Pola kluczowe |
 |---|---|
-| `Conversations` | `ID`, `title`, `herName`, `hisName`, `createdAt` + **stan reżysera**: `phase`, `topic`, `advisorMode`, `turnsSinceProgress`, `escalationStreak`, `lastActivityAt` |
-| `Messages` | `ID`, `conversation`, `seq` (Integer), `author`, `text`, `createdAt` + dla dymek ADVISOR: `kind`, `decisionType` |
+| `Conversations` | `ID`, `title`, `herName` (dom. `Ona`), `hisName` (dom. `On`), `createdAt` + **stan reżysera**: `phase`, `topic`, `advisorMode`, `turnsSinceProgress`, `escalationStreak`, `lastActivityAt`, `model`, `lastComposerHint`, `decide*Tokens` (tokeny warstwy decyzji, narastają co turę) |
+| `Messages` | `ID`, `conversation`, `seq` (Integer), `author`, `text`, `createdAt` + dla dymek ADVISOR: `kind`, `decisionType`, tokeny generacji (`inputTokens`/`outputTokens`/…) |
 | `ParkedTopics` | `ID`, `conversation`, `text`, `status` (`OPEN`/`RESOLVED`/`DISMISSED`), `parkedAtSeq` — lista „do omówienia później" |
 
 `author ∈ { HER, HIM, TOGETHER, ADVISOR }`. Para pisze jako `HER`/`HIM`/`TOGETHER`; `ADVISOR` rezerwowany dla AI. `seq` rośnie monotonicznie w obrębie konwersacji i jest jedyną podstawą sortowania.
@@ -59,7 +59,7 @@ Content-Type: application/json
 Odpowiedź (JSON OData) — zawiera też imiona pary (z encji `Conversations`):
 
 ```json
-{ "conversationId": "9f1c…", "herName": "Ola", "hisName": "Tomek" }
+{ "conversationId": "9f1c…", "herName": "Ona", "hisName": "On" }
 ```
 
 ---
@@ -92,10 +92,12 @@ Kolejność zależy od decyzji reżysera:
 
 `phase.change` i `parked.update` są emitowane tylko przy realnej zmianie. `error` może wystąpić w dowolnym momencie i kończy strumień.
 
+W trybie **„tylko słucha"** (`advisorMode = PAUSED`) handler **nie woła modelu** — emituje wyłącznie `message.user` i kończy strumień (żadnych `advisor.*`). Para rozmawia między sobą; powrót przez `setAdvisorMode`.
+
 | `event:` | `data:` (kształt) | Znaczenie |
 |---|---|---|
 | `message.user` | `{ message: ChatMessage }` | Zapisana wiadomość pary (z `id`, `seq`) |
-| `advisor.decision` | `{ decision, phase, uiHint?, nextSpeaker? }` | Decyzja reżysera po turze (→ status sceniczny) |
+| `advisor.decision` | `{ decision, phase, uiHint?, nextSpeaker?, composerHint? }` | Decyzja reżysera po turze (→ status sceniczny + podpowiedź do pola) |
 | `advisor.wait` | `{ uiHint }` | Advisor analizuje, ale **nie dodaje dymki** (lista nie rośnie) |
 | `phase.change` | `{ phase, topic? }` | Zmiana fazy (miękki cel) |
 | `parked.update` | `{ topics: ParkedTopic[] }` | Aktualna lista „do omówienia później" |
@@ -154,6 +156,24 @@ POST /chat/resolveParkedTopic  { "conversationId", "topicId", "action" }
 `action ∈ { PROMOTE, RESOLVED, DISMISSED }`. `PROMOTE` = „wróćmy teraz": ustawia `topic` konwersacji na ten
 temat i zamyka go (`RESOLVED`). `RESOLVED`/`DISMISSED` tylko oznaczają status.
 
+**`setAdvisorMode`** — przełącznik trybu doradcy („Rozmawia" = `LEADING` / „Tylko słucha" = `PAUSED`):
+
+```
+POST /chat/setAdvisorMode   { "conversationId", "mode" }   // mode ∈ { LEADING, PAUSED }
+→ { "ok": true }
+```
+
+Wejście w `PAUSED` dopisuje **szablonowe pożegnanie doradcy** (dymka ADVISOR, 0 tokenów, `kind:"FULL"`) — front dociąga je przez `getHistory()`. W `PAUSED` `sendMessage` nie woła modelu (patrz §5). Powrót do `LEADING` przywraca pełny tor.
+
+**`conversationUsage`** (funkcja OData) — rozbicie zużycia tokenów i kosztu (generacja vs decyzja):
+
+```
+GET /chat/conversationUsage(conversationId='9f1c…')
+→ { inputTokens, outputTokens, messages,
+    decideInputTokens, decideOutputTokens,
+    model, generationCostUsd, decideCostUsd, costUsd }
+```
+
 ---
 
 ## 6. Tryb degradacji (bez SSE)
@@ -185,6 +205,6 @@ Kształt SSE celowo odzwierciedla `messages.stream()` Anthropic, więc realna im
 | `message_stop` + `finalMessage()` | `end` → `advisor.end` |
 | `stop_reason: "refusal"` | `end` z `finishReason:"error"` (obsłużyć przed czytaniem treści) |
 
-Mapowanie autora na wejście modelu: wiadomości pary → rola `user` z prefiksem mówcy (`[Ola]:` / `[Tomek]:` / `[Razem]:`), wiadomości doradcy → rola `assistant`. Persona doradcy (ciepły, empatyczny, neutralny mediator) w `system` z `cache_control` (stały prefiks → tańszy), uzupełniana o krótką instrukcję sterującą wg typu decyzji. Model generacji: `claude-sonnet-4-6`.
+Mapowanie autora na wejście modelu: wiadomości pary → rola `user` z prefiksem mówcy, wiadomości doradcy → rola `assistant`. Prefiks to wewnętrzna wskazówka „kto pisze": przy domyślnych imionach (Ona/On) role‑etykiety `[kobieta]` / `[mężczyzna]` / `[razem]`, przy własnych imionach — imiona; doradca nigdy nie powtarza etykiet w odpowiedzi (`sanitizeAdvisor` dodatkowo czyści markdown i wiodące etykiety). Persona doradcy (ciepły, empatyczny, neutralny mediator) w `system` z `cache_control`, uzupełniana o krótką instrukcję sterującą wg typu decyzji (`DECISION_STEER`). **Model: `claude-haiku-4-5`** (`ADVISOR_MODEL`) — dla generacji ORAZ dla `decide` (structured output, `output_config.format` json_schema).
 
-**Domyślnie `ADVISOR=mock` — zero wywołań do API.** Realny model włącza `ADVISOR=anthropic` (wymaga `ANTHROPIC_API_KEY`). Mały model decyzyjny (`claude-haiku`) dla `decide` — krok 5, patrz [`ENGINE.md`](ENGINE.md).
+**Domyślnie `ADVISOR=mock` — zero wywołań do API.** Realny model włącza `ADVISOR=anthropic` (wymaga `ANTHROPIC_API_KEY`). Decyzja i generacja na tym samym modelu; reguły ([`decisionRules.js`](srv/advisor/decisionRules.js)) służą jako fallback. Szczegóły silnika i bezpieczeństwa: [`ENGINE.md`](ENGINE.md).

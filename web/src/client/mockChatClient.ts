@@ -36,7 +36,7 @@ const REPLIES: Record<SenderAuthor, string[]> = {
     'Dziękuję, że mówisz o tym tak wprost — to wymaga odwagi. Brzmi to dla mnie jak prośba o bycie zauważoną w tym, ile na sobie trzymasz, a nie tylko o sprawiedliwszy podział zadań. Powiedz mi proszę, gdybyś miała wskazać jedną rzecz, która dałaby Ci poczucie ulgi, co by to było?',
   ],
   HIM: [
-    'Słyszę, że bardzo się starasz, a mimo to towarzyszy Ci poczucie, że to wciąż nie wystarcza. To trudne i wyczerpujące uczucie, więc ważne, że je nazywasz na głos. Chciałbym lepiej zrozumieć Twoją stronę — co pomogłoby Ci uwierzyć, że Twój wysiłek naprawdę jest widziany przez Olę?',
+    'Słyszę, że bardzo się starasz, a mimo to towarzyszy Ci poczucie, że to wciąż nie wystarcza. To trudne i wyczerpujące uczucie, więc ważne, że je nazywasz na głos. Chciałbym lepiej zrozumieć Twoją stronę — co pomogłoby Ci uwierzyć, że Twój wysiłek naprawdę jest widziany przez drugą stronę?',
     'Dziękuję, że to powiedziałeś — krytyka, której z góry się spodziewasz, potrafi odbierać całą chęć działania. Nie chcę tego upraszczać, chcę to dobrze zrozumieć. Kiedy ostatnio poczułeś, że zrobiłeś coś dobrze i że zostało to zauważone w domu?',
   ],
   TOGETHER: [
@@ -57,8 +57,18 @@ const CRISIS =
 const SHORT_NEGATION = /^(nie|tak|nieprawda|bzdura|przesadzasz|wcale nie|właśnie że|kłamiesz)\b[\s.!?]*$/i;
 const DIGRESSION =
   /(\ba (tak )?w ogóle\b|przy okazji|swoją drogą|poza tym|\bno i jeszcze\b|innym razem|zmieniając temat|odbiegając|aha i)/i;
+// Krok 3: eskalacja — wyzwiska, pogarda, oskarżenia personalne, wulgaryzmy.
+const ESCALATION =
+  /(idiot|debil|kretyn|głup|beznadziejn|żałosn|egoist|samolub|leniw|kłam|nienawidz|zamknij się|spierdal|pierdol|gówn|chrzań|kurwa|do diabła|olewasz|masz mnie gdzieś|przez ciebie|twoja wina|ty zawsze|ty nigdy)/i;
+function isShouting(text: string): boolean {
+  const letters = text.replace(/[^a-ząćęłńóśźżA-ZĄĆĘŁŃÓŚŹŻ]/g, '');
+  if (letters.length >= 6 && letters === letters.toUpperCase()) return true;
+  if ((text.match(/!/g) || []).length >= 3) return true;
+  return false;
+}
+const isEscalating = (text: string) => ESCALATION.test(text) || isShouting(text);
 
-const NAME: Record<SenderAuthor, string> = { HER: 'Ola', HIM: 'Tomek', TOGETHER: 'Razem' };
+const NAME: Record<SenderAuthor, string> = { HER: 'Ona', HIM: 'On', TOGETHER: 'Razem' };
 
 // stan reżysera per konwersacja (lustro kolumn Conversations w trybie offline)
 const stateStore = new Map<string, ConversationState>();
@@ -100,6 +110,21 @@ function sidesSpoken(history: ChatMessage[]): Set<string> {
 const hasParaphrased = (history: ChatMessage[]) =>
   history.some((m) => m.author === 'ADVISOR' && m.decisionType === 'SUMMARIZE');
 
+/** Ile razy z rzędu doradca pogłębiał (DEEPEN) z OBECNYM mówcą (od wypowiedzi drugiej strony). */
+function deepenCountForCurrent(history: ChatMessage[]): number {
+  const couple = history.filter((m) => m.author !== 'ADVISOR');
+  const last = couple[couple.length - 1];
+  if (!last || last.author === 'TOGETHER') return 0;
+  let count = 0;
+  for (let i = history.length - 1; i >= 0; i--) {
+    const m = history[i];
+    if (m.author === 'ADVISOR') {
+      if (m.decisionType === 'DEEPEN') count++;
+    } else if (m.author !== last.author) break;
+  }
+  return count;
+}
+
 /** Decyzja reżysera — te same reguły co backend (decisionRules.js). */
 function decide(history: ChatMessage[], state: ConversationState): AdvisorDecision {
   const couple = history.filter((m) => m.author !== 'ADVISOR');
@@ -109,17 +134,62 @@ function decide(history: ChatMessage[], state: ConversationState): AdvisorDecisi
   const phase = state.phase || 'OPENING';
 
   if (!last)
-    return { shouldSpeak: false, type: 'WAIT', kind: 'FULL', phase: 'OPENING', uiHint: 'Advisor słucha…', turnsSinceProgress: 0 };
+    return { shouldSpeak: false, type: 'WAIT', kind: 'FULL', phase: 'OPENING', uiHint: 'Doradca słucha w milczeniu…', turnsSinceProgress: 0 };
 
   if (CRISIS.test(last.text))
-    return { shouldSpeak: true, type: 'SAFETY_STOP', kind: 'FULL', phase, topic: state.topic, turnsSinceProgress: 0 };
+    return { shouldSpeak: true, type: 'SAFETY_STOP', kind: 'FULL', phase, topic: state.topic, turnsSinceProgress: 0, escalationStreak: 0 };
+
+  // „TYLKO SŁUCHA" (PAUSED) — obrona w głębi: doradca milczy. W praktyce sendMessage
+  // w tym trybie w ogóle nie woła decide (krótkie spięcie niżej).
+  if (state.advisorMode === 'PAUSED')
+    return {
+      shouldSpeak: false,
+      type: 'WAIT',
+      kind: 'FULL',
+      phase,
+      topic: state.topic,
+      turnsSinceProgress: tsp,
+      escalationStreak: state.escalationStreak || 0,
+      uiHint: 'Doradca przysłuchuje się w tle…',
+    };
 
   const substantive = isSubstantive(last.text);
   const newTsp = substantive ? 0 : tsp + 1;
   const topic = state.topic || (substantive ? shorten(last.text) : undefined);
 
+  // krok 3: eskalacja → krótka moderacja (priorytet poniżej bezpieczeństwa)
+  if (isEscalating(last.text)) {
+    const newStreak = (state.escalationStreak || 0) + 1;
+    return {
+      shouldSpeak: true,
+      type: 'INTERVENE',
+      kind: 'INTERVENTION',
+      phase,
+      topic,
+      escalationStreak: newStreak,
+      turnsSinceProgress: newTsp,
+      uiHint: 'Doradca łagodzi napięcie…',
+    };
+  }
+
   if (topic && DIGRESSION.test(last.text))
-    return { shouldSpeak: true, type: 'REFRAME', kind: 'FULL', phase, topic, parkAdd: shorten(last.text), turnsSinceProgress: newTsp };
+    return { shouldSpeak: true, type: 'REFRAME', kind: 'FULL', phase, topic, parkAdd: shorten(last.text), turnsSinceProgress: newTsp, escalationStreak: 0 };
+
+  // POGŁĘBIENIE — zostań przy mówiącej osobie i dopytaj, zanim oddasz głos/parafrazujesz.
+  // Gate na treściowości = adaptacyjnie; sufit 2× chroni przed pętlą pytań.
+  if (last.author !== 'TOGETHER' && substantive && deepenCountForCurrent(history) < 2) {
+    return {
+      shouldSpeak: true,
+      type: 'DEEPEN',
+      kind: 'FULL',
+      phase: last.author === 'HER' ? 'PERSPECTIVE_A' : 'PERSPECTIVE_B',
+      topic,
+      nextSpeaker: last.author as SenderAuthor,
+      turnsSinceProgress: 0,
+      escalationStreak: 0,
+      uiHint: 'Doradca dopytuje…',
+    };
+  }
 
   const spoken = sidesSpoken(history);
   if (last.author !== 'TOGETHER' && spoken.size < 2) {
@@ -132,17 +202,18 @@ function decide(history: ChatMessage[], state: ConversationState): AdvisorDecisi
       nextSpeaker,
       topic,
       turnsSinceProgress: newTsp,
-      uiHint: `Advisor czeka na perspektywę: ${NAME[nextSpeaker]}`,
+      escalationStreak: 0,
+      uiHint: `Doradca czeka na perspektywę: ${NAME[nextSpeaker]}`,
     };
   }
 
   if (!substantive) {
     if (!SHORT_NEGATION.test(last.text.trim()) && prev && prev.author === last.author)
-      return { shouldSpeak: false, type: 'WAIT', kind: 'FULL', phase, topic, turnsSinceProgress: newTsp, uiHint: 'Advisor słucha…' };
+      return { shouldSpeak: false, type: 'WAIT', kind: 'FULL', phase, topic, turnsSinceProgress: newTsp, escalationStreak: 0, uiHint: 'Doradca słucha w milczeniu…' };
     const ladder: AdvisorDecision['type'] =
       newTsp <= 1 ? 'CLARIFY' : newTsp === 2 ? 'REFRAME' : newTsp === 3 ? 'NARROW' : newTsp === 4 ? 'CHOOSE' : 'PROPOSE';
     const ladderPhase = newTsp >= 5 ? 'AGREEMENT' : newTsp >= 2 ? 'CORE' : phase;
-    return { shouldSpeak: true, type: ladder, kind: 'FULL', phase: ladderPhase, topic, turnsSinceProgress: newTsp };
+    return { shouldSpeak: true, type: ladder, kind: 'FULL', phase: ladderPhase, topic, turnsSinceProgress: newTsp, escalationStreak: 0 };
   }
 
   return {
@@ -152,11 +223,15 @@ function decide(history: ChatMessage[], state: ConversationState): AdvisorDecisi
     phase: hasParaphrased(history) ? 'CORE' : 'PARAPHRASE',
     topic,
     turnsSinceProgress: 0,
+    escalationStreak: 0,
   };
 }
 
 const SAFETY_TEXT =
   'Zatrzymajmy się na moment — to, co słyszę, brzmi poważnie i Wasze bezpieczeństwo jest najważniejsze. Nie zastąpię tu profesjonalnej pomocy. Jeśli ktokolwiek czuje się zagrożony, rozważcie kontakt z odpowiednimi służbami (112) lub telefonem zaufania.';
+
+const SENDOFF_TEXT =
+  'Zostawiam Was z tym we dwoje — porozmawiajcie między sobą, choćby na spokojnie poza aplikacją. Gdy zechcecie, żebym znów się włączył, przełączcie mnie na „rozmawia" i po prostu napiszcie, jak Wam poszło.';
 
 /** Treść dymki dobrana do typu decyzji (lustro mockAdvisor.replyText). */
 function replyText(decision: AdvisorDecision, history: ChatMessage[]): string {
@@ -171,6 +246,12 @@ function replyText(decision: AdvisorDecision, history: ChatMessage[]): string {
   switch (decision.type) {
     case 'SAFETY_STOP':
       return SAFETY_TEXT;
+    case 'INTERVENE':
+      return (decision.escalationStreak || 0) >= 2
+        ? 'Zróbmy krótką przerwę — temperatura rośnie i trudno się teraz nawzajem usłyszeć. Weźcie po oddechu; za chwilę spróbujcie powiedzieć to samo, ale o sobie: „czuję…", „potrzebuję…". Nie chcę, żeby padły słowa, których potem będziecie żałować.'
+        : 'Słyszę dużo emocji i napięcia. Zanim padnie odpowiedź — zatrzymajmy się na sekundę. Spróbujcie nazwać, co teraz czujecie, bez oceniania drugiej osoby. Jestem tu, żeby pomóc Wam się usłyszeć, a nie zranić.';
+    case 'DEEPEN':
+      return `Zatrzymajmy się na chwilę przy tym, co mówisz, ${NAME[lastAuthor]}. Słyszę w tym coś ważnego. Opowiedz mi o tym trochę więcej — co czujesz najmocniej w takim momencie i czego najbardziej Ci wtedy brakuje?`;
     case 'ASK_OTHER': {
       const next = decision.nextSpeaker ?? (lastAuthor === 'HER' ? 'HIM' : 'HER');
       return `Dziękuję, ${NAME[lastAuthor]}. Zapisuję, co czujesz — zanim spróbuję to uporządkować, chciałbym usłyszeć też drugą stronę. ${NAME[next]}, jak Ty widzisz tę sytuację?`;
@@ -200,7 +281,7 @@ export const mockChatClient: ChatClient = {
     const conversationId = uid();
     store.set(conversationId, []); // start od pustej rozmowy — bez seedowanych wiadomości
     stateStore.set(conversationId, freshState());
-    return { conversationId, herName: 'Ola', hisName: 'Tomek' };
+    return { conversationId, herName: 'Ona', hisName: 'On' };
   },
 
   async getHistory(conversationId: string) {
@@ -225,6 +306,23 @@ export const mockChatClient: ChatClient = {
     s.parkedTopics = s.parkedTopics.filter((p) => p.status === 'OPEN');
   },
 
+  async setAdvisorMode(conversationId: string, mode): Promise<void> {
+    getStateFor(conversationId).advisorMode = mode;
+    if (mode === 'PAUSED') {
+      const history = store.get(conversationId) ?? [];
+      history.push({
+        id: uid(),
+        conversationId,
+        seq: nextSeq(history),
+        author: 'ADVISOR',
+        text: SENDOFF_TEXT,
+        createdAt: now(),
+        kind: 'FULL',
+      });
+      store.set(conversationId, history);
+    }
+  },
+
   async *sendMessage(req: SendMessageRequest): AsyncIterable<ChatStreamEvent> {
     const history = store.get(req.conversationId) ?? [];
     const state = getStateFor(req.conversationId);
@@ -242,6 +340,10 @@ export const mockChatClient: ChatClient = {
     store.set(req.conversationId, history);
     yield { type: 'message.user', message: userMsg };
 
+    // „TYLKO SŁUCHA" (PAUSED): doradca całkowicie wyłączony — zero decyzji/generacji.
+    // Para pisze między sobą; kończymy na samym echu wiadomości. Powrót = przełącznik.
+    if (state.advisorMode === 'PAUSED') return;
+
     // 2. KROK SILNIKA: decyzja reżysera (czy i jak mówić)
     const decision = decide(history, state);
 
@@ -250,6 +352,7 @@ export const mockChatClient: ChatClient = {
     if (decision.phase) state.phase = decision.phase;
     if (decision.topic) state.topic = decision.topic;
     if (typeof decision.turnsSinceProgress === 'number') state.turnsSinceProgress = decision.turnsSinceProgress;
+    if (typeof decision.escalationStreak === 'number') state.escalationStreak = decision.escalationStreak;
     const phaseChanged = decision.phase && decision.phase !== prevPhase;
     if (decision.parkAdd) {
       const parked: ParkedTopic = { id: uid(), text: decision.parkAdd, status: 'OPEN', parkedAtSeq: userMsg.seq };
@@ -268,7 +371,7 @@ export const mockChatClient: ChatClient = {
 
     // Advisor MILCZY — analizuje, ale nie dodaje dymki.
     if (!decision.shouldSpeak) {
-      yield { type: 'advisor.wait', uiHint: decision.uiHint ?? 'Advisor słucha…' };
+      yield { type: 'advisor.wait', uiHint: decision.uiHint ?? 'Doradca słucha w milczeniu…' };
       return;
     }
 

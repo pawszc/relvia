@@ -1,28 +1,24 @@
 /**
- * Cennik tokenów do szacowania kosztu (USD za 1M tokenów).
- *
- * Stawki dla modelu używanego przez anthropicAdvisor: claude-sonnet-4-6.
- * ⚠ Jeśli zmienisz model w anthropicAdvisor.js, zaktualizuj te stawki.
- *
- * Cache: odczyt ~0.1× wejścia, zapis (5 min TTL) ~1.25× wejścia.
+ * Szacowanie kosztu (USD) z zużycia tokenów.
+ * Stawki per model pochodzą z models.js — koszt automatycznie dopasowuje się
+ * do podanego modelu (domyślnie do aktywnego z ADVISOR_MODEL).
  */
-const RATES = {
-  input: 3.0, // wejście (tokeny niecache'owane)
-  output: 15.0, // wyjście
-  cacheRead: 0.3, // odczyt z cache (~0.1× input)
-  cacheCreation: 3.75, // zapis do cache 5 min (~1.25× input)
-};
+const { ratesFor, activeModel } = require('./models');
 
-/** Szacowany koszt (USD) dla obiektu zużycia {inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens}. */
-function costUsd(usage) {
+/**
+ * @param {{inputTokens?,outputTokens?,cacheReadTokens?,cacheCreationTokens?}} usage
+ * @param {string} [model] id modelu; domyślnie aktywny
+ */
+function costUsd(usage, model = activeModel()) {
+  const r = ratesFor(model);
   const u = usage || {};
   return (
-    ((u.inputTokens || 0) * RATES.input +
-      (u.outputTokens || 0) * RATES.output +
-      (u.cacheReadTokens || 0) * RATES.cacheRead +
-      (u.cacheCreationTokens || 0) * RATES.cacheCreation) /
+    ((u.inputTokens || 0) * r.input +
+      (u.outputTokens || 0) * r.output +
+      (u.cacheReadTokens || 0) * r.cacheRead +
+      (u.cacheCreationTokens || 0) * r.cacheCreation) /
     1e6
   );
 }
 
-module.exports = { RATES, costUsd };
+module.exports = { costUsd };

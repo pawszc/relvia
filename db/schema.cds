@@ -41,6 +41,15 @@ entity Conversations : cuid, managed {
   turnsSinceProgress : Integer default 0;      // wykrywanie pętli
   escalationStreak   : Integer default 0;      // rozpęd kłótni (krok 3)
   lastActivityAt     : Timestamp;              // heartbeat (krok 4)
+  model              : String;                 // model AI użyty do generacji (np. claude-haiku-4-5)
+  lastComposerHint   : String(160);            // ostatnia podpowiedź do pola — by decide jej nie powtarzał
+
+  // Zużycie tokenów warstwy DECYZJI (krok 5: decide modelem, odpala się co turę,
+  // też przy WAIT — nie tworzy wiadomości, więc liczone narastająco tutaj).
+  decideInputTokens         : Integer default 0;
+  decideOutputTokens        : Integer default 0;
+  decideCacheReadTokens     : Integer default 0;
+  decideCacheCreationTokens : Integer default 0;
   parked             : Composition of many ParkedTopics on parked.conversation = $self;
 }
 

@@ -1,11 +1,20 @@
 /**
- * Regułowy silnik decyzji reżysera — wspólny dla mocka i (na razie) trybu
- * anthropic. Czysta funkcja: (history, state, ctx) → AdvisorDecision.
+ * Regułowy silnik decyzji reżysera. Czysta funkcja: (history, state, ctx) → AdvisorDecision.
  *
- * Krok 2: stan ma znaczenie. decide() korzysta z `state` (faza, kotwica tematu,
- * licznik pętli) i ZWRACA nowe wartości do persystencji (topic, turnsSinceProgress).
- * Heurystyki celowo proste; realny model decyzyjny (claude-haiku) podmieni `decide`
- * w kroku 5 — patrz plan.
+ * ROLA (po zbudowaniu silnika): NIE jest to główny tor. W produkcji decyzje — w tym
+ * bezpieczeństwo, eskalacja, dygresja — podejmuje MODEL (anthropicAdvisor) semantycznie
+ * i WIELOJĘZYCZNIE. Ten moduł służy jako:
+ *   (1) FALLBACK — gdy model padnie / zwróci zły JSON / timeout,
+ *   (2) MOCK — tryb offline (ADVISOR=mock): bogate zachowanie bez tokenów (dev/demo).
+ *
+ * WIELOJĘZYCZNOŚĆ: poniższe wzorce są PL‑only i celowo proste — to best‑effort siatka po
+ * polsku, NIE wielojęzyczny detektor. Świadomie ich NIE rozbudowujemy pod inne języki
+ * (regex po polsku się nie skaluje) — od wielojęzyczności jest model. Konsekwencja: przy
+ * (rzadkiej) awarii modelu w rozmowie nie‑polskiej fallback nie złapie kryzysu/eskalacji.
+ *
+ * WYJĄTKI działające też w torze MODELU (importowane przez anthropicAdvisor): `isSubstantive`
+ * liczy `turnsSinceProgress`, ale jest zdominowany przez próg DŁUGOŚCI (≥40 zn.) → degraduje
+ * łagodnie dla obcych języków; `isShouting` (CAPS / „!") jest z natury językowo‑neutralny.
  */
 
 // Sygnały kryzysu/przemocy → tor bezpieczeństwa (priorytet ponad wszystkim).
@@ -18,6 +27,20 @@ const SHORT_NEGATION = /^(nie|tak|nieprawda|bzdura|przesadzasz|wcale nie|właśn
 // Marker dygresji — sygnał, że ktoś otwiera nowy wątek obok bieżącego tematu.
 const DIGRESSION =
   /(\ba (tak )?w ogóle\b|przy okazji|swoją drogą|poza tym|\bno i jeszcze\b|innym razem|zmieniając temat|odbiegając|aha i)/i;
+
+// Krok 3: eskalacja — wyzwiska, pogarda, oskarżenia personalne, wulgaryzmy.
+const ESCALATION =
+  /(idiot|debil|kretyn|głup|beznadziejn|żałosn|egoist|samolub|leniw|kłam|nienawidz|zamknij się|spierdal|pierdol|gówn|chrzań|kurwa|do diabła|olewasz|masz mnie gdzieś|przez ciebie|twoja wina|ty zawsze|ty nigdy)/i;
+
+/** Krzyk: ALL CAPS (≥6 liter) albo nagromadzenie wykrzykników. */
+function isShouting(text) {
+  const letters = text.replace(/[^a-ząćęłńóśźżA-ZĄĆĘŁŃÓŚŹŻ]/g, '');
+  if (letters.length >= 6 && letters === letters.toUpperCase()) return true;
+  if ((text.match(/!/g) || []).length >= 3) return true;
+  return false;
+}
+
+const isEscalating = (text) => ESCALATION.test(text) || isShouting(text);
 
 const isCouple = (m) => m.author !== 'ADVISOR';
 const speakerLabel = (author, ctx = {}) =>
@@ -50,6 +73,21 @@ function sidesSpoken(history) {
 const hasParaphrased = (history) =>
   history.some((m) => m.author === 'ADVISOR' && m.decisionType === 'SUMMARIZE');
 
+/** Ile razy z rzędu doradca pogłębiał (DEEPEN) z OBECNYM mówcą (od wypowiedzi drugiej strony). */
+function deepenCountForCurrent(history) {
+  const couple = history.filter(isCouple);
+  const last = couple[couple.length - 1];
+  if (!last || last.author === 'TOGETHER') return 0;
+  let count = 0;
+  for (let i = history.length - 1; i >= 0; i--) {
+    const m = history[i];
+    if (m.author === 'ADVISOR') {
+      if (m.decisionType === 'DEEPEN') count++;
+    } else if (m.author !== last.author) break;
+  }
+  return count;
+}
+
 /** @returns {import('../../shared/chat-contract').AdvisorDecision} */
 function decide(history, state = {}, context = {}) {
   const couple = history.filter(isCouple);
@@ -59,12 +97,29 @@ function decide(history, state = {}, context = {}) {
   const phase = state.phase || 'OPENING';
 
   if (!last) {
-    return { shouldSpeak: false, type: 'WAIT', kind: 'FULL', phase: 'OPENING', uiHint: 'Advisor słucha…', turnsSinceProgress: 0 };
+    return { shouldSpeak: false, type: 'WAIT', kind: 'FULL', phase: 'OPENING', uiHint: 'Doradca słucha w milczeniu…', turnsSinceProgress: 0, escalationStreak: 0 };
   }
 
-  // 1) tor bezpieczeństwa — zawsze pierwszy
+  // 1) tor bezpieczeństwa — zawsze pierwszy (działa też w pauzie)
   if (CRISIS.test(last.text)) {
-    return { shouldSpeak: true, type: 'SAFETY_STOP', kind: 'FULL', phase, topic: state.topic, turnsSinceProgress: 0, reason: 'sygnał kryzysu' };
+    return { shouldSpeak: true, type: 'SAFETY_STOP', kind: 'FULL', phase, topic: state.topic, turnsSinceProgress: 0, escalationStreak: 0, reason: 'sygnał kryzysu' };
+  }
+
+  // 1b) „TYLKO SŁUCHA" (PAUSED) — obrona w głębi: doradca milczy. W realnym backendzie
+  //     ta gałąź jest nieosiągalna (handler w trybie PAUSED w ogóle nie woła decide),
+  //     ale zostaje jako zabezpieczenie dla fallbacku.
+  if (state.advisorMode === 'PAUSED') {
+    return {
+      shouldSpeak: false,
+      type: 'WAIT',
+      kind: 'FULL',
+      phase,
+      topic: state.topic,
+      turnsSinceProgress: tsp,
+      escalationStreak: state.escalationStreak || 0,
+      uiHint: 'Doradca przysłuchuje się w tle…',
+      reason: 'pauza',
+    };
   }
 
   const substantive = isSubstantive(last.text);
@@ -73,7 +128,25 @@ function decide(history, state = {}, context = {}) {
   // kotwica tematu: pierwsza wypowiedź "z treścią" ustala, o czym rozmawiamy
   const topic = state.topic || (substantive ? shorten(last.text) : undefined);
 
-  // 2) dygresja → zaparkuj i wróć do kotwicy (nie ucinaj — odłóż)
+  // 2) eskalacja (krok 3) — ostre słowa/krzyk → krótka moderacja w „luce przekazania".
+  //    Ma priorytet ponad zwykłym tokiem (oddanie głosu, pętla), poniżej bezpieczeństwa.
+  if (isEscalating(last.text)) {
+    const newStreak = (state.escalationStreak || 0) + 1;
+    return {
+      shouldSpeak: true,
+      type: 'INTERVENE',
+      kind: 'INTERVENTION',
+      phase,
+      topic,
+      escalationStreak: newStreak,
+      turnsSinceProgress: newTsp,
+      uiHint: 'Doradca łagodzi napięcie…',
+      reason: `eskalacja (${newStreak})`,
+    };
+  }
+
+  // od tego miejsca tura jest "spokojna" → zerujemy rozpęd kłótni
+  // 3) dygresja → zaparkuj i wróć do kotwicy (nie ucinaj — odłóż)
   if (topic && DIGRESSION.test(last.text)) {
     return {
       shouldSpeak: true,
@@ -83,11 +156,30 @@ function decide(history, state = {}, context = {}) {
       topic,
       parkAdd: shorten(last.text),
       turnsSinceProgress: newTsp,
+      escalationStreak: 0,
       reason: 'dygresja → parking',
     };
   }
 
-  // 3) wypowiedziała się tylko jedna strona → oddaj głos drugiej
+  // 3b) POGŁĘBIENIE — zanim oddamy głos/sparafrazujemy, zostań przy mówiącej osobie i
+  //     dopytaj. Gate na treściowości = adaptacyjnie: płytka/urywana odpowiedź NIE
+  //     pogłębia (leci dalej), a sufit 2× chroni przed pętlą pytań.
+  if (last.author !== 'TOGETHER' && substantive && deepenCountForCurrent(history) < 2) {
+    return {
+      shouldSpeak: true,
+      type: 'DEEPEN',
+      kind: 'FULL',
+      phase: last.author === 'HER' ? 'PERSPECTIVE_A' : 'PERSPECTIVE_B',
+      topic,
+      nextSpeaker: last.author,
+      turnsSinceProgress: 0,
+      escalationStreak: 0,
+      uiHint: 'Doradca dopytuje…',
+      reason: `pogłębienie (${deepenCountForCurrent(history) + 1})`,
+    };
+  }
+
+  // 4) wypowiedziała się tylko jedna strona → oddaj głos drugiej
   const spoken = sidesSpoken(history);
   if (last.author !== 'TOGETHER' && spoken.size < 2) {
     const nextSpeaker = last.author === 'HER' ? 'HIM' : 'HER';
@@ -99,25 +191,26 @@ function decide(history, state = {}, context = {}) {
       nextSpeaker,
       topic,
       turnsSinceProgress: newTsp,
-      uiHint: `Advisor czeka na perspektywę: ${speakerLabel(nextSpeaker, context)}`,
+      escalationStreak: 0,
+      uiHint: `Doradca czeka na perspektywę: ${speakerLabel(nextSpeaker, context)}`,
       reason: 'jedna strona',
     };
   }
 
-  // 4) brak postępu (negacja / urywek)
+  // 5) brak postępu (negacja / urywek)
   if (!substantive) {
     // krótka kontynuacja WŁASNEJ myśli (nie negacja) → daj przestrzeń, milcz
     if (!SHORT_NEGATION.test(last.text.trim()) && prev && prev.author === last.author) {
-      return { shouldSpeak: false, type: 'WAIT', kind: 'FULL', phase, topic, turnsSinceProgress: newTsp, uiHint: 'Advisor słucha…', reason: 'kontynuacja' };
+      return { shouldSpeak: false, type: 'WAIT', kind: 'FULL', phase, topic, turnsSinceProgress: newTsp, escalationStreak: 0, uiHint: 'Doradca słucha w milczeniu…', reason: 'kontynuacja' };
     }
     // stopniowany nacisk — nazwij pętlę i pchnij w konstruktywną stronę
     const ladder =
       newTsp <= 1 ? 'CLARIFY' : newTsp === 2 ? 'REFRAME' : newTsp === 3 ? 'NARROW' : newTsp === 4 ? 'CHOOSE' : 'PROPOSE';
     const ladderPhase = newTsp >= 5 ? 'AGREEMENT' : newTsp >= 2 ? 'CORE' : phase;
-    return { shouldSpeak: true, type: ladder, kind: 'FULL', phase: ladderPhase, topic, turnsSinceProgress: newTsp, reason: `brak postępu (${newTsp})` };
+    return { shouldSpeak: true, type: ladder, kind: 'FULL', phase: ladderPhase, topic, turnsSinceProgress: newTsp, escalationStreak: 0, reason: `brak postępu (${newTsp})` };
   }
 
-  // 5) obie strony "z treścią" → parafraza, a po niej sedno
+  // 6) obie strony "z treścią" → parafraza, a po niej sedno
   return {
     shouldSpeak: true,
     type: 'SUMMARIZE',
@@ -125,8 +218,9 @@ function decide(history, state = {}, context = {}) {
     phase: hasParaphrased(history) ? 'CORE' : 'PARAPHRASE',
     topic,
     turnsSinceProgress: 0,
+    escalationStreak: 0,
     reason: 'obie strony',
   };
 }
 
-module.exports = { decide, speakerLabel, isCouple, shorten };
+module.exports = { decide, speakerLabel, isCouple, shorten, isSubstantive };
