@@ -1,4 +1,5 @@
 import type { SenderAuthor } from '@shared/chat-contract';
+import Avatar from './Avatar';
 
 /**
  * Kompozytor: przełącznik autora (Ona / Razem / On) + pole tekstowe.
@@ -19,11 +20,11 @@ interface Props {
   disabled: boolean; // blokada na czas wysyłki / zanim hook gotowy
 }
 
-// kolejność i etykiety pigułek: Ona (HER) · Razem (TOGETHER) · On (HIM)
+// kolejność i etykiety pigułek: Ona (HER) · On (HIM) · Razem (TOGETHER)
 const PILLS: { author: SenderAuthor; label: (h: string, m: string) => string }[] = [
   { author: 'HER', label: (h) => h },
-  { author: 'TOGETHER', label: () => 'Razem' },
   { author: 'HIM', label: (_h, m) => m },
+  { author: 'TOGETHER', label: () => 'Razem' },
 ];
 
 export default function Composer({
@@ -48,15 +49,15 @@ export default function Composer({
             className={`pill ${author === p.author ? 'pill-active' : ''} pill-${p.author.toLowerCase()}`}
             onClick={() => onAuthorChange(p.author)}
           >
-            {/* kropki kolorystyczne tylko przy aktywnym autorze */}
-            {p.author === 'TOGETHER' && author === 'TOGETHER' && (
-              <>
-                <span className="dot dot-her" />
-                <span className="dot dot-him" />
-              </>
+            {/* awatar(y) strony — zawsze widoczne, podpowiadają, kto pisze */}
+            {p.author === 'HER' && <Avatar who="HER" size={18} alt="" />}
+            {p.author === 'HIM' && <Avatar who="HIM" size={18} alt="" />}
+            {p.author === 'TOGETHER' && (
+              <span className="pill-pair">
+                <Avatar who="HER" size={18} alt="" />
+                <Avatar who="HIM" size={18} alt="" />
+              </span>
             )}
-            {p.author === 'HER' && author === 'HER' && <span className="dot dot-her" />}
-            {p.author === 'HIM' && author === 'HIM' && <span className="dot dot-him" />}
             {p.label(herName, hisName)}
           </button>
         ))}

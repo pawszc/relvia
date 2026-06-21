@@ -1,18 +1,23 @@
 import type { UiMessage } from '../hooks/useConversation';
+import Avatar from './Avatar';
 
 /**
- * Pojedynczy bąbel wiadomości w stylu A4. Wygląd zależy od autora:
- *  - ADVISOR  → środek, awatar + biały bąbel (Newsreader),
- *  - HER (Ola) → lewa, gradient terakota,
- *  - HIM (Tomek) → prawa, gradient szałwia,
- *  - TOGETHER → środek, "hero" z etykietą "Powiedzieliście to razem".
+ * Pojedynczy bąbel wiadomości (design „Relinder", kanał „dwa brzegi"). Wygląd zależy od autora:
+ *  - HER (Ona)   → lewy brzeg, awatar nad dymką, gradient terakota,
+ *  - HIM (On)    → prawy brzeg, awatar nad dymką, gradient szałwia,
+ *  - TOGETHER    → środek, „hero" z etykietą „Powiedzieliście to razem",
+ *  - ADVISOR     → biały bąbel (Newsreader) pochylony ku adresatowi (advisorSide),
+ *                  interwencja/moderacja → mała dymka na środku.
  * Pod bąblem pary pokazujemy status wysyłki (sending / failed + retry).
  */
+
+export type AdvisorSide = 'left' | 'right' | 'center';
 
 interface Props {
   message: UiMessage;
   herName: string;
   hisName: string;
+  advisorSide: AdvisorSide; // do którego brzegu pochyla się doradca (wg adresata)
   typing: boolean; // doradca pisze (pusty bąbel) → animowane kropki
   onRetry: (clientId: string) => void;
 }
@@ -48,11 +53,11 @@ function Status({ message, onRetry }: { message: UiMessage; onRetry: (id: string
   return null;
 }
 
-export default function MessageBubble({ message, herName, hisName, typing, onRetry }: Props) {
-  // jeden case na autora — to tu mapujemy model (Author) na render A4
+export default function MessageBubble({ message, herName, hisName, advisorSide, typing, onRetry }: Props) {
+  // jeden case na autora — to tu mapujemy model (Author) na render „dwa brzegi"
   switch (message.author) {
     case 'ADVISOR': {
-      // Krok 3: interwencja/moderacja → mała, wyróżniona dymka na środku.
+      // interwencja/moderacja → mała, wyróżniona dymka na środku.
       const small = message.kind === 'INTERVENTION' || message.kind === 'MODERATION';
       if (small) {
         return (
@@ -63,10 +68,8 @@ export default function MessageBubble({ message, herName, hisName, typing, onRet
         );
       }
       return (
-        <div className="row row-advisor">
-          <span className="advisor-avatar">
-            <span className="advisor-dot" />
-          </span>
+        <div className={`row row-advisor row-advisor-${advisorSide}`}>
+          <Avatar who="ADVISOR" size={34} className="advisor-av" />
           <div className="bubble bubble-advisor">{typing ? <TypingDots /> : message.text}</div>
         </div>
       );
@@ -75,10 +78,7 @@ export default function MessageBubble({ message, herName, hisName, typing, onRet
     case 'HER':
       return (
         <div className="row row-her">
-          <div className="label label-her">
-            <span className="dot dot-her" />
-            {herName}
-          </div>
+          <Avatar who="HER" size={34} alt={herName} className="msg-av" />
           <div className="bubble bubble-her">{message.text}</div>
           <Status message={message} onRetry={onRetry} />
         </div>
@@ -87,10 +87,7 @@ export default function MessageBubble({ message, herName, hisName, typing, onRet
     case 'HIM':
       return (
         <div className="row row-him">
-          <div className="label label-him">
-            {hisName}
-            <span className="dot dot-him" />
-          </div>
+          <Avatar who="HIM" size={34} alt={hisName} className="msg-av" />
           <div className="bubble bubble-him">{message.text}</div>
           <Status message={message} onRetry={onRetry} />
         </div>

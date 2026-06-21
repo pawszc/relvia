@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import type { AdvisorDecisionType, AdvisorMode, ChatClient, Phase, SenderAuthor } from '@shared/chat-contract';
 import { useConversation, type LastDecision } from '../hooks/useConversation';
 import MessageList from './MessageList';
 import Composer from './Composer';
+import Avatar from './Avatar';
 
 /** Etykiety faz — dyskretny wskaźnik bieżącego miękkiego celu rozmowy. */
 const PHASE_LABEL: Record<Phase, string> = {
@@ -14,6 +15,11 @@ const PHASE_LABEL: Record<Phase, string> = {
   AGREEMENT: 'Ustalenia',
 };
 const PHASE_ORDER: Phase[] = ['OPENING', 'PERSPECTIVE_A', 'PERSPECTIVE_B', 'PARAPHRASE', 'CORE', 'AGREEMENT'];
+
+// Flaga: przełącznik trybu doradcy (Rozmawia/Tylko słucha) jest na razie ukryty.
+// Cała logika trybu (advisorMode/setMode/PAUSED) zostaje w kodzie — możemy do niej
+// wrócić, włączając VITE_ADVISOR_MODE_TOGGLE=true (np. w web/.env.local).
+const SHOW_ADVISOR_MODE_TOGGLE = import.meta.env.VITE_ADVISOR_MODE_TOGGLE === 'true';
 
 /**
  * „Inteligentny kompozytor" (faza 2): placeholder naprowadza na konstruktywny krok
@@ -126,18 +132,28 @@ export default function ChatScreen({ client }: Props) {
           ? 'Doradca pisze…'
           : null;
 
+  // osoba, na którą doradca czeka (do pulsującego awatara w statusie obecności)
+  const waitFor = lastDecision?.nextSpeaker;
+
   return (
     <div className="card">
-      {/* pasek górny: nazwa + awatary pary */}
+      {/* pasek górny: brand lockup (Venn + nazwa) + klaster awatarów Doradca·Ona·On */}
       <header className="header">
         <div className="brand">
-          <span className="brand-title">wspólnie</span>
-          <span className="brand-sub">wasza przestrzeń</span>
+          <span className="brand-venn" aria-hidden="true">
+            <span className="ring ring-her" />
+            <span className="ring ring-him" />
+          </span>
+          <span className="brand-text">
+            <span className="brand-title">Relinder</span>
+            <span className="brand-sub">support for your relationship · room for both voices</span>
+          </span>
         </div>
         <div className="header-right">
           {/* tryb doradcy (krok 4): trwały przełącznik „rozmawia" / „tylko słucha".
-              „tylko słucha" = doradca całkowicie wyłączony (zero wywołań modelu). */}
-          {messages.length > 0 && (
+              „tylko słucha" = doradca całkowicie wyłączony (zero wywołań modelu).
+              Na razie ukryty za flagą SHOW_ADVISOR_MODE_TOGGLE — logika zostaje w kodzie. */}
+          {SHOW_ADVISOR_MODE_TOGGLE && messages.length > 0 && (
             <div className="advisor-toggle" role="group" aria-label="Tryb doradcy">
               <span className="advisor-toggle-label">Doradca:</span>
               <div className="advisor-toggle-seg">
@@ -160,18 +176,31 @@ export default function ChatScreen({ client }: Props) {
               </div>
             </div>
           )}
-          {/* dyskretny wskaźnik fazy — bieżący miękki cel (nie blokuje niczego) */}
-          {messages.length > 0 && (
-            <span className="phase-pill" title={`Faza ${PHASE_ORDER.indexOf(phase) + 1}/6`}>
-              {PHASE_LABEL[phase]}
-            </span>
-          )}
-          <div className="avatars">
-            <span className="avatar avatar-her">{herName.charAt(0).toUpperCase()}</span>
-            <span className="avatar avatar-him">{hisName.charAt(0).toUpperCase()}</span>
+          <div className="avatars" title={`Doradca · ${herName} · ${hisName}`}>
+            <Avatar who="ADVISOR" size={34} className="av-stack" />
+            <Avatar who="HER" size={34} alt={herName} className="av-stack" />
+            <Avatar who="HIM" size={34} alt={hisName} className="av-stack" />
           </div>
         </div>
       </header>
+
+      {/* wstęga faz — bieżący miękki cel rozmowy (postęp Otwarcie → Ustalenia) */}
+      {messages.length > 0 && (
+        <div className="phase-ribbon" title={`Faza ${PHASE_ORDER.indexOf(phase) + 1}/6`}>
+          <span className="phase-ribbon-label">Faza</span>
+          <div className="phase-track">
+            {PHASE_ORDER.map((p, i) => (
+              <Fragment key={p}>
+                <span
+                  className={`phase-bar ${i <= PHASE_ORDER.indexOf(phase) ? 'is-on' : ''} ${p === phase ? 'is-active' : ''}`}
+                />
+                {p === phase && <span className="phase-name">{PHASE_LABEL[p]}</span>}
+              </Fragment>
+            ))}
+          </div>
+          <span className="phase-ribbon-goal">→ Sedno · Ustalenia</span>
+        </div>
+      )}
 
       {/* lista wiadomości; onRetry pozwala ponowić wiadomość ze statusem 'failed' */}
       <MessageList
@@ -205,12 +234,29 @@ export default function ChatScreen({ client }: Props) {
         </div>
       )}
 
-      {/* status sceniczny reżysera — obecność, nie spinner (słucha / czeka / pisze) */}
-      {statusLabel && (
-        <div className={`advisor-status advisor-status-${advisorStatus.kind}`}>
-          <span className="advisor-status-dot" />
-          {statusLabel}
+      {/* status sceniczny reżysera — obecność, nie spinner (słucha / czeka / pisze).
+          Przy oddaniu głosu pokazujemy awatar doradcy + pulsujący awatar osoby, na
+          którą czekamy (zamiast samego imienia). Pozostałe stany: kropka + tekst. */}
+      {advisorStatus.kind === 'waiting' && waitFor && /czeka na/i.test(advisorStatus.hint ?? '') ? (
+        <div className="advisor-status advisor-status-waiting advisor-presence">
+          <Avatar who="ADVISOR" size={22} />
+          <span>{waitFor === 'TOGETHER' ? 'czeka na Waszą wspólną odpowiedź' : 'czeka na odpowiedź'}</span>
+          {waitFor === 'TOGETHER' ? (
+            <>
+              <Avatar who="HER" size={22} pulse alt={herName} />
+              <Avatar who="HIM" size={22} pulse alt={hisName} />
+            </>
+          ) : (
+            <Avatar who={waitFor} size={22} pulse alt={waitFor === 'HER' ? herName : hisName} />
+          )}
         </div>
+      ) : (
+        statusLabel && (
+          <div className={`advisor-status advisor-status-${advisorStatus.kind}`}>
+            <span className="advisor-status-dot" />
+            {statusLabel}
+          </div>
+        )
       )}
 
       {/* globalny komunikat błędu (np. zerwany strumień) */}

@@ -54,43 +54,94 @@ body {
 }
 .brand {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  align-items: center;
+  gap: 12px;
+}
+/* Venn — dwa zachodzące pierścienie (terakota + szałwia) = „przestrzeń dla obojga" */
+.brand-venn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+}
+.ring {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid;
+}
+.ring-her {
+  border-color: #c98a5e;
+}
+.ring-him {
+  border-color: #7d9a6f;
+  margin-left: -9px;
+}
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 .brand-title {
-  font: 500 22px 'Newsreader';
+  font: 500 22px/1 'Newsreader';
   color: #33302a;
 }
 .brand-sub {
-  font: 400 13px 'Hanken Grotesk';
-  color: #a59c8a;
+  font: 600 9.5px 'Hanken Grotesk';
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #b0a488;
+  white-space: nowrap;
 }
 .avatars {
   display: flex;
   align-items: center;
 }
-.avatar {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font: 600 13px 'Hanken Grotesk';
-  border: 2px solid #fdfbf7;
+/* klaster nachodzących awatarów (Doradca · Ona · On) z białą obwódką */
+.av-stack {
+  border: 2.5px solid #fdfbf7;
+  box-shadow: 0 1px 4px rgba(80, 60, 35, 0.22);
 }
-.avatar-her {
-  background: #e8c9b4;
-  color: #8a5333;
-}
-.avatar-him {
-  background: #cdd9c2;
-  color: #4f6244;
-  margin-left: -9px;
+.av-stack + .av-stack {
+  margin-left: -10px;
 }
 
-/* ---------- lista wiadomości ---------- */
+/* ---------- kanał „dwa brzegi" + lista wiadomości ---------- */
+.channel {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  min-height: 0;
+}
+/* brzegi: lewy = Ona (terakota), prawy = On (szałwia) — subtelne tła pod treścią */
+.bank {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+}
+.bank-her {
+  left: 0;
+  background: rgba(201, 138, 94, 0.045);
+}
+.bank-him {
+  right: 0;
+  background: rgba(125, 154, 111, 0.05);
+}
+/* cienka linia środkowa, gasnąca u góry i dołu */
+.channel-line {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-0.5px);
+  background: linear-gradient(180deg, transparent, #e3d7c1 12%, #e3d7c1 88%, transparent);
+}
 .messages {
+  position: relative;
+  z-index: 1;
   flex: 1;
   padding: 26px 30px;
   display: flex;
@@ -99,34 +150,71 @@ body {
   overflow-y: auto;
 }
 
-/* pusty stan (brak wiadomości na starcie) */
+/* pusty stan (brak wiadomości na starcie) — dwie połówki wokół linii środkowej:
+   „Wybierzcie, kto zaczyna” kończy się na lewo od osi, „albo zacznijcie wspólnie”
+   zaczyna na prawo. Bez myślnika; odstęp robi padding wokół osi. */
 .empty-state {
-  margin: auto;
-  max-width: 360px;
-  text-align: center;
+  margin: auto 0;
+  display: flex;
+  width: 100%;
+  align-items: center;
   color: #a59c8a;
   font: 400 18px/1.55 'Newsreader';
   font-style: italic;
-  text-wrap: pretty;
+}
+.empty-left {
+  width: 50%;
+  text-align: right;
+  padding-right: 8px;
+}
+.empty-right {
+  width: 50%;
+  text-align: left;
+  padding-left: 8px;
 }
 
 .row {
   display: flex;
   flex-direction: column;
 }
+/* doradca: dymka pochylona ku adresatowi (lewy/prawy brzeg) lub na środku (do obojga) */
 .row-advisor {
-  align-self: stretch;
-  flex-direction: row;
-  gap: 13px;
+  width: 52%;
+  gap: 6px;
+}
+.row-advisor-left {
+  align-self: flex-start;
+}
+.row-advisor-left .advisor-av {
+  align-self: flex-end; /* awatar nad wewnętrznym (prawym) rogiem */
+}
+.row-advisor-right {
+  align-self: flex-end;
+}
+.row-advisor-right .advisor-av {
+  align-self: flex-start; /* awatar nad wewnętrznym (lewym) rogiem */
+}
+.row-advisor-center {
+  align-self: center;
+  width: 70%;
+}
+.row-advisor-center .advisor-av {
+  align-self: center;
 }
 .row-her {
   align-self: flex-start;
-  max-width: 72%;
+  max-width: 46%;
+}
+.row-her .msg-av {
+  margin: 0 2px 5px;
 }
 .row-him {
   align-self: flex-end;
-  max-width: 72%;
+  max-width: 46%;
   align-items: flex-end;
+}
+.row-him .msg-av {
+  margin: 0 2px 5px;
 }
 .row-together {
   align-self: center;
@@ -180,13 +268,15 @@ body {
   text-wrap: pretty;
 }
 .bubble-advisor {
+  width: 100%;
   background: #fff;
-  border-radius: 5px 16px 16px 16px;
-  padding: 15px 18px;
-  max-width: 88%;
-  box-shadow: 0 4px 14px -8px rgba(80, 60, 35, 0.22);
-  font: 400 17px/1.62 'Newsreader';
+  border-radius: 16px;
+  padding: 15px 19px;
+  box-shadow: 0 6px 18px -10px rgba(80, 60, 35, 0.28);
+  font: 400 16.5px/1.6 'Newsreader';
   color: #3a352c;
+  text-align: center;
+  text-wrap: pretty;
   min-height: 24px;
 }
 
@@ -262,25 +352,6 @@ body {
   color: #9a5f3c;
 }
 
-/* awatar doradcy */
-.advisor-avatar {
-  flex: none;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: #fff;
-  border: 1px solid #e6dcc9;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.advisor-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #b3a78f;
-}
-
 /* wskaźnik pisania */
 .typing {
   display: inline-flex;
@@ -309,21 +380,123 @@ body {
   }
 }
 
+/* puls na osobie, na którą doradca czeka — radiujący pierścień + lekkie powiększenie.
+   Dwa warianty koloru pierścienia: szałwia (On) i terakota (Ona). */
+@keyframes pulseWait {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(125, 154, 111, 0.45);
+  }
+  50% {
+    transform: scale(1.12);
+    box-shadow: 0 0 0 5px rgba(125, 154, 111, 0);
+  }
+}
+@keyframes pulseWaitHer {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(201, 138, 94, 0.45);
+  }
+  50% {
+    transform: scale(1.12);
+    box-shadow: 0 0 0 5px rgba(201, 138, 94, 0);
+  }
+}
+
+/* delikatne „oddychanie" — obecność doradcy bez nachalności */
+@keyframes breathe {
+  0%, 100% {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+}
+
+/* ---------- awatar (Avatar.tsx) ---------- */
+.av {
+  position: relative;
+  flex: none;
+  display: inline-block;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #ece4d3;
+}
+.av-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.av-sil {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.av-sil svg {
+  display: block;
+}
+/* puls „czekamy na tę osobę" — kolor pierścienia wg strony */
+.av-pulse {
+  animation: pulseWait 1.6s infinite ease-in-out;
+}
+.av-pulse.av-her {
+  animation-name: pulseWaitHer;
+}
+
 /* prawa strona nagłówka: faza + awatary */
 .header-right {
   display: flex;
   align-items: center;
   gap: 14px;
 }
-/* dyskretny wskaźnik fazy (bieżący miękki cel rozmowy) */
-.phase-pill {
-  padding: 4px 11px;
-  border-radius: 999px;
-  background: #efe9dc;
-  color: #8a7f63;
-  font: 600 11px 'Hanken Grotesk';
-  letter-spacing: 0.04em;
+/* ---------- wstęga faz (postęp rozmowy) ---------- */
+.phase-ribbon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 26px;
+  background: #faf6ef;
+  border-bottom: 1px solid #efe6d6;
+}
+.phase-ribbon-label {
+  font: 600 10.5px 'Hanken Grotesk';
+  letter-spacing: 0.12em;
   text-transform: uppercase;
+  color: #b0a285;
+}
+.phase-track {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+.phase-bar {
+  height: 5px;
+  flex: 1;
+  border-radius: 999px;
+  background: #e6dcc8;
+  transition: flex 0.3s ease;
+}
+/* fazy zaliczone / bieżąca — gradient terakota→piasek */
+.phase-bar.is-on {
+  background: linear-gradient(90deg, #c79a6a, #cba876);
+}
+/* bieżąca faza — szerszy segment, robi miejsce na podpis */
+.phase-bar.is-active {
+  flex: 2.2;
+}
+.phase-name {
+  font: 600 11.5px 'Hanken Grotesk';
+  color: #9a7142;
+  white-space: nowrap;
+}
+.phase-ribbon-goal {
+  font: 500 11px 'Hanken Grotesk';
+  color: #bdb29a;
   white-space: nowrap;
 }
 
@@ -462,6 +635,14 @@ body {
   background: #f3ece0;
   color: #8a6f50;
 }
+/* obecność z awatarami: doradca + „czeka na…" + pulsujący awatar oczekiwanej osoby */
+.advisor-presence {
+  justify-content: center;
+  gap: 8px;
+}
+.advisor-presence span {
+  font-style: italic;
+}
 .advisor-status-waiting .advisor-status-dot {
   background: #c79a6a;
 }
@@ -522,6 +703,14 @@ body {
   color: #7a6047;
   font-weight: 700;
   box-shadow: 0 1px 3px rgba(120, 90, 50, 0.18);
+}
+/* para awatarów w pigułce „Razem" — lekko nachodzące */
+.pill-pair {
+  display: inline-flex;
+  align-items: center;
+}
+.pill-pair .av + .av {
+  margin-left: -5px;
 }
 
 .input-wrap {

@@ -1,0 +1,49 @@
+# Relinder — redesign MVP (notatki robocze)
+
+Stan na: czerwiec 2026. Wracamy do tego później. Aplikacja: **Couple Adviser / „Relinder"** — czat pary z empatycznym doradcą-AI (mediator). Repo: `github.com/pawszc/couple-adviser` (web: React/Vite, `web/src`). Pełna specyfikacja funkcjonalna: wklejony dokument FUNCTIONAL.md + ENGINE/CONTRACT/SAFETY w repo.
+
+## Design system (z repo `web/src/styles.css`)
+- Fonty: **Newsreader** (serif, głos doradcy + akcenty) + **Hanken Grotesk** (sans, UI/para).
+- Tło appki `#e9e4dc`, karta `#f7f2ea`, nagłówek `#fdfbf7`, ramki `#ebe1d2`. Tekst `#33302a`.
+- **Ona / terakota**: bąbel grad `#f4ddcd→#f6e7df`, tekst `#5a4434`, akcent `#c98a5e`, label `#a86b41`.
+- **On / szałwia**: bąbel grad `#dde7d4→#e8eee3`, tekst `#3e4b37`, akcent `#7d9a6f`, label `#5e7551`.
+- Doradca: biały bąbel, Newsreader 16.5–17px, `#3a352c`.
+- Fazy: Otwarcie → Perspektywa I/II → Parafraza → Sedno → Ustalenia.
+
+## Kierunki (plik `Relinder — kierunki redesignu.dc.html`)
+A · Dopracowany obecny · B · Dwa brzegi (kanał mediacji) · C · Dziennik.
+**Wybrano kierunek B.** Plik roboczy: **`Relinder B.dc.html`**.
+
+## ✅ NAZWANY SNAPSHOT: „Twarze v1" — `Relinder — Twarze v1.dc.html`
+Zamrożona wersja ze zdjęciami Ony i On (uploads/imageK.png = Ona, uploads/imageM.png = On), Doradca jako sylwetka. Poza awatarami identyczna jak Dwa Brzegi v1.
+
+## ✅ NAZWANY SNAPSHOT: „Dwa Brzegi v1" — `Relinder — Dwa Brzegi v1.dc.html`
+Zamrożona, zaakceptowana wersja designu B (czerwiec 2026). Zawiera wszystko poniżej: brand lockup (Venn + Relinder + podtytuł wersaliki), kanał z dwoma brzegami, sylwetki profilowe (doradca neutralny, pozycja zależna od adresata, ikona nad wewn. rogiem dymka), puls na osobie oczekiwanej, klaster 3 kółek, przełącznik Ona·On·Razem. To jest punkt odniesienia, do którego wracamy.
+
+## Relinder B — co zawiera (stan obecny)
+- Nagłówek: **brand lockup = znak Venn (dwa nachodzące pierścienie terakota+szałwia) + „Relinder" (Newsreader) + jednoliniowy podtytuł wersalikami grotesk (Hanken 600, letter-spacing .16em): „support for your relationship · room for both voices"**; po prawej **klaster 3 nachodzących kółek (Teams-style): Doradca · Ona · On**. Przełącznik „Rozmawia/Tylko słucha" USUNIĘTY.
+- Wstęga faz (pozioma, „Otwarcie" aktywne).
+- Kanał centralny (dwa brzegi: Ona lewo, On prawo, spine na środku). Doradca żyje w kanale.
+- Nad dymkami: sama ikonka (bez tekstu).
+- Status obecności: [ikona doradcy] „czeka na odpowiedź:" [ikona On]; pulsująca kropka **zielona**.
+- Przełącznik autora: Ona / Razem (dwie nachodzące ikonki, kobieta z przodu) / On.
+- Placeholder: „Twoja kolej — co wtedy się stało?"
+
+## Ikony — finalna decyzja: SYLWETKA PROFILOWA (dojrzałe, bez imion)
+Porzucono kreskówkowe twarze (za niepoważne). **Bez własnych imion** (zawsze Ona/On).
+- **Doradca**: **neutralna poza — front bust (taka sama sylwetka jak On/Ona), kolor `#9a8f76`**; bez profilu/odwracania/animacji (porzucone). Cała wypowiedź doradcy zajmuje połówkę zależną od adresata: do Ony — LEWA połówka (prawa krawędź przy środkowej linii); do On — PRAWA połówka (lewa krawędź przy środku); do obojga — środek (align-self flex-start/flex-end/center, width ~49%). Ikona doradcy wisi nad **wewnętrznym górnym rogiem dymka**: prawy-górny (do Ony), lewy-górny (do On), wyśrodkowana (do obojga) — przez align-items flex-end/flex-start/center. Wszystkie ikony w wypowiedziach tej samej wielkości (~34px). Sygnał „czekamy na X" = **puls (`pulseWait`, radiujący pierścień) na ikonie osoby oczekiwanej** (w statusie). „Razem" w przełączniku = dwie sylwetki obok siebie (Ona po lewej, On po prawej). Kolejność przełącznika: Ona · On · Razem. Forma frontalna (front bust) w klastrze/statusie/etykietach.
+- **Ona**: front bust, węższe barki `#b8794d`; **włosy jaśniejsze na zewnątrz `#dba97a`**, ciemniejszy środek twarzy `#b5763f`; włosy skrócone do linii dołu okręgu twarzy.
+- **On**: front bust, szersze barki + gładka głowa `#7d9a6f`.
+- Płeć: subtelnie samą sylwetką (barki + włosy), nie krzyczy. Uśmiechów już nie ma (to były twarze — porzucone).
+- Ikony budowane natywnie w 54×54 px i skalowane wrapperem `transform:scale()` do miejsc (klaster 34, etykiety 22, status/pigułki 18–20).
+
+## Pliki eksploracyjne (referencja, można usunąć)
+- `Relinder - Twarze.dc.html` — **wersja ze zdjęciami Ony i On** (uploads/imageK.png = Ona, uploads/imageM.png = On); Doradca zostaje sylwetką. Reszta identyczna jak Dwa Brzegi v1.
+- `Relinder — kierunki redesignu.dc.html` (A/B/C; B ma już wstęgę faz z A)
+- `Relinder — sylwetka profil (dopracowanie).dc.html` (finalny profil + Ona z włosami)
+- starsze plansze twarzy/ikon były iteracjami — porzucone na rzecz profilu.
+
+## Otwarte / następne kroki (do zrobienia później)
+- Pozostałe stany w B: **moderacja** (mała dymka), **stop bezpieczeństwa** (kryzys), tryb **„Tylko słucha"**, panel **parkingu** („do omówienia później").
+- Ewentualnie: dopracowanie czytelności profilu doradcy w bardzo małych rozmiarach; interaktywny prototyp (wysyłanie, przełączanie autora, realne odwracanie doradcy wg stanu).
+- Rozważyć przeniesienie finalnych ikon/komponentów do realnego kodu (`web/src/components`).
