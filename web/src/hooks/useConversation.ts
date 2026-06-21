@@ -147,6 +147,9 @@ export function useConversation(client: ChatClient): UseConversation {
       let restingNextSpeaker: SenderAuthor | undefined;
       // rodzaj dymki znany już z decyzji → ustawiamy go przy starcie (bez przeskoku renderu)
       let pendingKind: UiMessage['kind'] = 'FULL';
+      // typ decyzji → stempel na żywej dymce, by pozycja „dwa brzegi" liczyła się z TEGO
+      // SAMEGO źródła co reżyser (a nie z fallbacku po ostatnim mówcy przed odświeżeniem)
+      let pendingDecisionType: UiMessage['decisionType'];
 
       let confirmed = false;
       try {
@@ -174,6 +177,7 @@ export function useConversation(client: ChatClient): UseConversation {
               restingHint = ev.uiHint;
               restingNextSpeaker = ev.nextSpeaker;
               pendingKind = ev.decision === 'INTERVENE' ? 'INTERVENTION' : 'FULL';
+              pendingDecisionType = ev.decision;
               setLastDecision({ type: ev.decision, nextSpeaker: ev.nextSpeaker, composerHint: ev.composerHint });
               setAdvisorStatus({ kind: 'listening', hint: ev.uiHint });
               break;
@@ -191,7 +195,7 @@ export function useConversation(client: ChatClient): UseConversation {
             case 'advisor.start':
               setAdvisorTyping(true);
               setAdvisorStatus({ kind: 'typing' });
-              setMessages((m) => [...m, { ...ev.message, text: '', kind: pendingKind }]);
+              setMessages((m) => [...m, { ...ev.message, text: '', kind: pendingKind, decisionType: pendingDecisionType }]);
               break;
             case 'advisor.delta':
               setMessages((m) => appendToLast(m, ev.text));

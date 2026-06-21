@@ -24,7 +24,7 @@ const DECISION_STEER = {
   DEEPEN:
     'Cel tej tury: POGŁĘB to, co właśnie powiedziała ta osoba. Odbij krótko jej uczucie/sedno (pokaż, że słyszysz) i zadaj JEDNO otwarte, łagodne pytanie, które pozwoli jej pójść głębiej — co za tym stoi, czego naprawdę potrzebuje, konkretny moment. Jeszcze NIE oddawaj głosu drugiej stronie i nie podsumowuj.',
   ASK_OTHER:
-    'Cel tej tury: krótko docenić osobę, która właśnie napisała, i oddać głos drugiej stronie. NIE doradzaj jeszcze — najpierw poproś o jej perspektywę.',
+    'Cel tej tury: osoba, która właśnie pisała, została już wysłuchana — teraz ODDAJ GŁOS DRUGIEJ osobie. Najpierw jednym zdaniem doceń tę, która mówiła, a potem ZWRÓĆ SIĘ WPROST do drugiej osoby (patrz „ADRESAT TEJ TURY”) i zaproś właśnie JĄ, by podzieliła się swoją perspektywą. Twoje pytanie/zaproszenie MA być skierowane do tej drugiej osoby — nie zadawaj kolejnego pytania pierwszej. Jeszcze nie doradzaj.',
   CLARIFY:
     'Cel tej tury: ostatnia wypowiedź to ogólna negacja bez treści. Poproś o jeden konkretny przykład zamiast oceny całości. Bądź zwięzły.',
   REFRAME:
@@ -79,6 +79,29 @@ function replyAudience(decision, history) {
 function audienceSteer(decision, history) {
   if (decision.type === 'SAFETY_STOP' || decision.type === 'INTERVENE') return null;
   return REGISTER[replyAudience(decision, history)] || REGISTER.TOGETHER;
+}
+
+/**
+ * TWARDE wiązanie adresata: reżyser (decide) jest jedynym źródłem prawdy o tym, do
+ * KOGO kierowana jest tura — UI (pozycja dymki, „czeka na…", auto-autor) liczy to z
+ * `nextSpeaker`/`replyAudience`. Tu zmuszamy treść modelu, by trafiła do tej samej
+ * osoby (wprost, na „Ty", we właściwych formach rodzaju), żeby prose nie rozjechała
+ * się ze znacznikami. null dla SAFETY_STOP/INTERVENE (symetria — bez celowania płcią).
+ */
+function audienceBinding(decision, history, ctx) {
+  if (decision.type === 'SAFETY_STOP' || decision.type === 'INTERVENE') return null;
+  const who = replyAudience(decision, history);
+  if (who === 'TOGETHER') {
+    return 'ADRESAT TEJ TURY: oboje. Kieruj wypowiedź do OBOJGA (na „Wy") — nie adresuj wyłącznie jednej osoby.';
+  }
+  const female = who === 'HER';
+  const ref = hasNames(ctx)
+    ? speakerLabel(who, ctx)
+    : female
+      ? 'kobiety, która teraz pisze'
+      : 'mężczyzny, który teraz pisze';
+  const forms = female ? 'czułaś, powiedziałaś, chciałabyś' : 'czułeś, powiedziałeś, chciałbyś';
+  return `ADRESAT TEJ TURY: ${ref}. Zwróć się WPROST i WYŁĄCZNIE do tej osoby (na „Ty"), w ${female ? 'ŻEŃSKICH' : 'MĘSKICH'} formach (${forms}). Ewentualne pytanie lub zaproszenie ma trafić DO NIEJ, nie do drugiej osoby; o drugiej możesz wspomnieć, ale nie zwracaj się w tej turze do niej.`;
 }
 
 // Persona doradcy — ciepły, empatyczny, neutralny mediator (jak w prototypie).
@@ -332,6 +355,14 @@ function finalizeDecision(d, history, state) {
     out.escalationStreak = out.type === 'INTERVENE' ? streak + 1 : 0;
   }
 
+  // Spójność „na kogo czekamy / kto pisze dalej": adresat dymki jest JEDYNYM
+  // źródłem prawdy. Model bywa, że zwraca nextSpeaker pod inny typ niż ASK_OTHER
+  // (albo myli stronę) — wtedy wskaźnik „czeka na odpowiedź" i auto-autor kompozytora
+  // rozjeżdżały się z treścią (np. DEEPEN dopytuje Jego, a UI czekało na Nią).
+  // Wyrównujemy do replyAudience: DEEPEN/CLARIFY/… → bieżący mówca, ASK_OTHER →
+  // druga strona, SUMMARIZE/REFRAME/PROPOSE/CHOOSE → oboje.
+  out.nextSpeaker = replyAudience(out, history);
+
   if (!out.topic && state.topic) out.topic = state.topic; // utrzymaj kotwicę
   return out;
 }
@@ -357,6 +388,9 @@ module.exports = {
     const reg = decision && audienceSteer(decision, history); // rejestr empatii wg adresata
     if (reg) system.push({ type: 'text', text: reg });
     if (steer) system.push({ type: 'text', text: steer });
+    // twarde wiązanie adresata NA KOŃCU — ma być ostatnim słowem (wygrywa z DECISION_STEER)
+    const bind = decision && audienceBinding(decision, history, context);
+    if (bind) system.push({ type: 'text', text: bind });
     const park = parkSteer(decision);
     if (park) system.push({ type: 'text', text: park });
 
