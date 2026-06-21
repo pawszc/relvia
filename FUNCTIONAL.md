@@ -124,7 +124,7 @@ bezpośredniego pytania to błąd.
 
 | Reakcja | Mówi? | Kiedy się pojawia | Co robi / co widzi użytkownik |
 |---|---|---|---|
-| **Milczenie** | nie | Para rozmawia między sobą i nie oczekuje teraz głosu; ktoś kontynuuje własną myśl | Doradca nie dodaje dymki; widać status „słucha w milczeniu…" |
+| **Milczenie** | nie | Para rozmawia między sobą i nie oczekuje teraz głosu; ktoś kontynuuje własną myśl | Doradca nie dodaje dymki; widać dyskretny status obecności (np. „Doradca czeka…") |
 | **Pogłębienie** | tak | Wypowiedź niesie uczucie/treść, w której jest jeszcze coś do zrozumienia | Odbija uczucie i zadaje **jedno** otwarte pytanie **do tej samej osoby** |
 | **Oddanie głosu** | tak | Pierwsza osoba została wysłuchana, druga jeszcze nie mówiła w tym wątku | Krótko docenia i zaprasza drugą stronę (pole podpowiada właśnie jej) |
 | **Doproszenie o konkret** | tak | Padła krótka, ogólna negacja bez treści („nieprawda!") | Prosi o jeden konkretny przykład zamiast oceny całości |
@@ -253,9 +253,10 @@ mówić, czy świadomie się wycofać w milczenie.
 - **powrót następuje tylko przełącznikiem** z powrotem na „Rozmawia". Po powrocie doradca dostaje pełną
   historię — także to, co padło w trybie cichym — i nadrabia kontekst.
 
-**Cisza / bezczynność.** Gdy przez dłuższy czas nikt nie pisze, pojawia się delikatny sygnał obecności
-(„Jesteśmy tu, gdy będziecie gotowi") i pole zaprasza do wspólnej wiadomości — wszystko **bez żadnego
-kosztu** (to czysto interfejsowy efekt, nie wywołanie modelu).
+**Cisza / bezczynność.** Gdy przez dłuższy czas (ok. 2 minut) nikt nie pisze, interfejs delikatnie
+zaprasza do powrotu: pole wpisywania przełącza autora na **„Razem"** i pokazuje zachęcającą podpowiedź
+(„Wróćcie, gdy będziecie gotowi — napiszcie razem, jak poszło…"). To czysto interfejsowy efekt —
+**zero kosztu**, żadnego wywołania modelu. W trybie „Tylko słucha" nie działa.
 
 ---
 
@@ -276,15 +277,16 @@ formatowania, wiodących etykiet typu „[On]:") — para widzi zawsze zwykły, 
 
 Zamiast „kręciołka ładowania" interfejs pokazuje **obecność reżysera**:
 
-| Status | Znaczenie |
+| Tekst w UI | Kiedy |
 |---|---|
-| **słucha** | analizuje turę (cicho) |
-| **pisze** | właśnie generuje odpowiedź |
-| **słucha w milczeniu** | świadomie nie zabiera teraz głosu |
-| **czeka na odpowiedź: {osoba}** | oddał głos i czeka na konkretną stronę (lub na wspólną odpowiedź) |
+| **„Doradca słucha…"** | analizuje właśnie zakończoną turę |
+| **„Doradca pisze…"** | generuje odpowiedź (na żywo, słowo po słowie) |
+| **„Doradca czeka na odpowiedź: {imię}"** / **„…na Waszą wspólną odpowiedź…"** | oddał głos i czeka na konkretną stronę |
+| **„Doradca czeka…"** | świadomie milczy (w trybie regułowym/offline bywa „Doradca słucha w milczeniu…") |
 
-Dodatkowo widać **wskaźnik fazy** (otwarcie → … → ustalenia) jako miękką informację o etapie oraz **panel
-parkingu** (poniżej).
+Przy **dłuższej ciszy** status sceniczny się chowa — zamiast niego zmienia się podpowiedź w polu (patrz §8).
+Dodatkowo widać **wskaźnik fazy** (Otwarcie → Perspektywa I/II → Parafraza → Sedno → Ustalenia) jako miękką
+informację o etapie oraz **panel parkingu** (poniżej).
 
 ---
 

@@ -103,8 +103,9 @@ To jest **najważniejszy diagram w całym dokumencie** — ścieżka jednej wiad
         TAK → advisor.start → generateReply(...) streamuje advisor.delta* → advisor.end  [woła model]
    i) zapis dymki doradcy do Messages (po sanityzacji), zapis tokenów generacji, res.end()
 
-3. Front (httpChatClient parsuje SSE):
-   tłumaczy zdarzenia na callbacki → useConversation aktualizuje UI (wiadomości, status, faza, placeholder)
+3. Front: httpChatClient.sendMessage() zwraca async-strumień zdarzeń (parseSSE).
+   useConversation iteruje go (for await … switch) i aktualizuje stan Reacta per typ
+   zdarzenia (wiadomości, status sceniczny, faza, placeholder).
 ```
 
 Dwie rzeczy warto zauważyć od razu:
