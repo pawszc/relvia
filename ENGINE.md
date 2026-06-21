@@ -265,9 +265,10 @@ Pole wpisywania odzwierciedla kierunek doradcy — zawsze nadpisywalne, zmiana t
 | 6 | Wzmocniony tor bezpieczeństwa — **model‑only** (kryteria SAFETY_STOP + wykluczenie metafor, jakość dymki); zweryfikowany wielojęzycznie | ✅ |
 | + | `DEEPEN` (pogłębianie, adaptacyjne 0–2×) | ✅ |
 | + | „Inteligentny kompozytor" (Faza 2): auto‑autor, placeholdery z modelu (`composerHint`), idle→Razem | ✅ |
+| + | Profil doradcy wg płci: rejestr empatii (HER/HIM/TOGETHER) + drzwi `composerHint` + floor (wariant B) — patrz §3 | ✅ |
 
 **Zadania po‑silnikowe:**
-- Przegląd regexów pod wielojęzyczność — **zrobione** (regexy są świadomie PL‑only jako fallback/mock; model = warstwa wielojęzyczna; patrz nagłówek `decisionRules.js`).
+- Przegląd regexów pod wielojęzyczność — **zrobione** (regexy kryzysu/eskalacji/dygresji są świadomie PL‑only jako fallback/mock; model = warstwa wielojęzyczna). **Wyjątek:** stałe floora drzwi (`FEELING_PROBE`/`EVENT_DOOR_BANK`) to PL‑only na ŻYWYM torze modelu — poza PL cichy no‑op; wielojęzyczny upgrade = opcja C (patrz §3). Patrz nagłówek `decisionRules.js`.
 - **Optymalizacja kosztu `decide`** (rośnie kwadratowo) — TODO: cache prefiksu / krótszy kontekst dla decide.
 - Krok ku publikacji: rate limiting / ochrona publicznego endpointu, wdrożenie (CAP serwuje build SPA).
 

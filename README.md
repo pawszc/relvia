@@ -9,7 +9,7 @@ analizuje, ale odzywa się tylko wtedy, gdy to pomaga (nie po każdej wiadomośc
 
 ## Dokumentacja
 
-- **[ENGINE.md](ENGINE.md)** — silnik rozmowy („reżyser"): cele, typy decyzji, fazy, pogłębianie, kompozytor, roadmapa.
+- **[ENGINE.md](ENGINE.md)** — silnik rozmowy („reżyser"): cele, typy decyzji, fazy, pogłębianie, kompozytor, rejestr empatii wg płci, roadmapa.
 - **[CONTRACT.md](CONTRACT.md)** — protokół usługi CAP: encje, akcje, zdarzenia SSE.
 - **[SAFETY.md](SAFETY.md)** — postawa bezpieczeństwa: detekcja kryzysu, świadome kompromisy.
 

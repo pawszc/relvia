@@ -4,12 +4,12 @@ using { cuid, managed } from '@sap/cds/common';
 
 /**
  * Autor wiadomości.
- * Para pisze jako HER (Ola), HIM (Tomek) lub TOGETHER ("razem" — wiadomość na osi).
+ * Para pisze jako HER (Ona), HIM (On) lub TOGETHER ("razem" — wiadomość na osi).
  * Doradca AI to ADVISOR. To jest sedno domeny — przenosimy je aż do promptu modelu.
  */
 type Author : String(10) enum {
-  HER;       // Ola — z prawej
-  HIM;       // Tomek — z lewej
+  HER;       // Ona — z prawej
+  HIM;       // On — z lewej
   TOGETHER;  // "razem" — hero na środku (wariant A4)
   ADVISOR;   // doradca AI — w środku
 }

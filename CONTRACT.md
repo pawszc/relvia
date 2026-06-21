@@ -114,6 +114,9 @@ W trybie **„tylko słucha"** (`advisorMode = PAUSED`) handler **nie woła mode
 event: message.user
 data: {"message":{"id":"m1","conversationId":"9f1c","seq":4,"author":"HER","text":"Czuję, że ogarnianie domu wisi tylko na mnie. Jestem zmęczona.","createdAt":"2026-06-18T10:00:00Z"}}
 
+event: advisor.decision
+data: {"decision":"SUMMARIZE","phase":"PARAPHRASE","composerHint":"co czujesz, gdy to wisi tylko na Tobie?"}
+
 event: advisor.start
 data: {"message":{"id":"m2","conversationId":"9f1c","seq":5,"author":"ADVISOR","createdAt":"2026-06-18T10:00:01Z"}}
 
@@ -127,7 +130,7 @@ event: advisor.delta
 data: {"text":"być widzianą i być docenianym."}
 
 event: advisor.end
-data: {"text":"Słyszę dwie potrzeby naraz: być widzianą i być docenianym.","finishReason":"end_turn"}
+data: {"text":"Słyszę dwie potrzeby naraz: być widzianą i być docenianym.","finishReason":"end_turn","kind":"FULL"}
 ```
 
 > Wiadomość `TOGETHER` ("razem") idzie tym samym `sendMessage` z `author:"TOGETHER"` — różni się tylko renderem (hero na osi w A4), nie protokołem.
@@ -205,6 +208,6 @@ Kształt SSE celowo odzwierciedla `messages.stream()` Anthropic, więc realna im
 | `message_stop` + `finalMessage()` | `end` → `advisor.end` |
 | `stop_reason: "refusal"` | `end` z `finishReason:"error"` (obsłużyć przed czytaniem treści) |
 
-Mapowanie autora na wejście modelu: wiadomości pary → rola `user` z prefiksem mówcy, wiadomości doradcy → rola `assistant`. Prefiks to wewnętrzna wskazówka „kto pisze": przy domyślnych imionach (Ona/On) role‑etykiety `[kobieta]` / `[mężczyzna]` / `[razem]`, przy własnych imionach — imiona; doradca nigdy nie powtarza etykiet w odpowiedzi (`sanitizeAdvisor` dodatkowo czyści markdown i wiodące etykiety). Persona doradcy (ciepły, empatyczny, neutralny mediator) w `system` z `cache_control`, uzupełniana o krótką instrukcję sterującą wg typu decyzji (`DECISION_STEER`). **Model: `claude-haiku-4-5`** (`ADVISOR_MODEL`) — dla generacji ORAZ dla `decide` (structured output, `output_config.format` json_schema).
+Mapowanie autora na wejście modelu: wiadomości pary → rola `user` z prefiksem mówcy, wiadomości doradcy → rola `assistant`. Prefiks to wewnętrzna wskazówka „kto pisze": przy domyślnych imionach (Ona/On) role‑etykiety `[kobieta]` / `[mężczyzna]` / `[razem]`, przy własnych imionach — imiona; doradca nigdy nie powtarza etykiet w odpowiedzi (`sanitizeAdvisor` dodatkowo czyści markdown i wiodące etykiety). Persona doradcy (ciepły, empatyczny, neutralny mediator) w `system` z `cache_control`, uzupełniana warstwami: `nameSteer` (jak zwracać się do pary) + `audienceSteer` (rejestr empatii wg płci adresata — szczegóły w [`ENGINE.md`](ENGINE.md)) + krótka instrukcja sterująca wg typu decyzji (`DECISION_STEER`). **Model: `claude-haiku-4-5`** (`ADVISOR_MODEL`) — dla generacji ORAZ dla `decide` (structured output, `output_config.format` json_schema).
 
 **Domyślnie `ADVISOR=mock` — zero wywołań do API.** Realny model włącza `ADVISOR=anthropic` (wymaga `ANTHROPIC_API_KEY`). Decyzja i generacja na tym samym modelu; reguły ([`decisionRules.js`](srv/advisor/decisionRules.js)) służą jako fallback. Szczegóły silnika i bezpieczeństwa: [`ENGINE.md`](ENGINE.md).
