@@ -9,6 +9,8 @@ analizuje, ale odzywa się tylko wtedy, gdy to pomaga (nie po każdej wiadomośc
 
 ## Dokumentacja
 
+- **[FUNCTIONAL.md](FUNCTIONAL.md)** — dokumentacja funkcjonalna: jak aplikacja się zachowuje (dla osób produktowych, testerów, nowych w zespole).
+- **[TECHNICAL.md](TECHNICAL.md)** — specyfikacja techniczna: jak to jest zbudowane, z wyjaśnieniami pojęć (dla developera junior/mid).
 - **[ENGINE.md](ENGINE.md)** — silnik rozmowy („reżyser"): cele, typy decyzji, fazy, pogłębianie, kompozytor, rejestr empatii wg płci, roadmapa.
 - **[CONTRACT.md](CONTRACT.md)** — protokół usługi CAP: encje, akcje, zdarzenia SSE.
 - **[SAFETY.md](SAFETY.md)** — postawa bezpieczeństwa: detekcja kryzysu, świadome kompromisy.
