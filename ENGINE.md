@@ -109,6 +109,33 @@ Zwracane przez `decide`. Określają, czy Advisor mówi i jaki ma cel tury.
 **`composerHint`** — krótka, kontekstowa podpowiedź do pola wpisywania dla następnej osoby (placeholder).
 Generuje ją model w `decide`; różnicowana z tury na turę (poprzednia trafia do promptu jako „nie powtarzaj").
 
+### Rejestr empatii wg adresata (profil wg płci)
+
+To samo **pełne ciepło** dla obojga — różni się **droga dojścia do emocji**, nie jej natężenie. Płeć (przez rolę
+`HER`/`HIM`) jest **miękkim priorem**; styl osoby może go nadpisać. Bezpieczeństwo i de‑eskalacja **symetryczne**.
+
+**Rejestr dymki** (`generateReply`, [`anthropicAdvisor.js`](srv/advisor/anthropicAdvisor.js)) — krótki blok
+`REGISTER` doklejany do `system[]` wg adresata (`replyAudience`: typy do obojga → `TOGETHER`; `ASK_OTHER` →
+`nextSpeaker`; reszta → bieżący mówca):
+- **HER** — obecny, sprawdzony rejestr: nazwij uczucie wprost, zaproś do głębszego nazwania potrzeby.
+- **HIM** — wejście w emocje przez **zdarzenie/działanie** (nie „co czujesz"), walidacja wysiłku/intencji,
+  **bez tonu pouczającego** (zakaz pytań‑wyzwań „czy potrafisz…/co stoi na przeszkodzie…"), bezpośrednio jak do partnera.
+- **TOGETHER** — neutralny **most‑tłumacz** między dialektami (potrzeba bliskości ↔ odruch naprawy = ta sama potrzeba).
+- `audienceSteer` zwraca `null` dla `SAFETY_STOP`/`INTERVENE` → tor bezpieczeństwa/de‑eskalacji bez zmian.
+
+**Drzwi wejścia w `composerHint`** — czy podpowiedź do pola otwiera przez **uczucie**, czy przez **zdarzenie**:
+- **Prompt (główny tor):** reguła „płeć = domyślne drzwi" w `DECIDE_SYSTEM` (mężczyzna → domyślnie zdarzenie;
+  kobieta → uczucie OK; styl nadpisuje) + mapa płci w `stateNote` (działa też przy własnych imionach).
+- **Floor (deterministyczny, zimny start):** w `finalizeDecision` — gdy `composerHint` celuje w mężczyznę
+  (`composerTarget` = `HIM`), pasuje do `FEELING_PROBE` i to **zimny start** (≤1 jego wypowiedź `isSubstantive`) →
+  podmiana na `EVENT_DOOR_BANK`. Po ≥2 jego turach floor milczy — steruje sam prompt.
+
+> **Uwaga (wielojęzyczność).** Stałe floora (`FEELING_PROBE`, `EVENT_DOOR_BANK`) żyją w
+> [`decisionRules.js`](srv/advisor/decisionRules.js), ale — w odróżnieniu od reszty reguł — **wykonują się
+> na żywym torze modelu**, nie tylko w fallbacku. Są **PL‑only**: poza polskim trigger nie trafia → floor to
+> cichy no‑op (prompt niesie całość), bez wstrzykiwania polskiego tekstu do obcej rozmowy. Wielojęzyczny
+> upgrade (opcja C): trigger → etykieta drzwi od modelu (`composerHintDoor`), bank → hint modelu w danym języku.
+
 ---
 
 ## 4. Logika reguł (fallback + mock)

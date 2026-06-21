@@ -12,6 +12,11 @@ Jak aplikacja reaguje na sygnały kryzysu (przemoc, samookaleczenie, myśli samo
 wszystkim (fazami, pętlą, pogłębianiem, oddawaniem głosu). Świadomie **nie** opieramy detekcji na
 regexach (po polsku się nie skalują, a celujemy w wiele języków).
 
+**Rejestr empatii wg płci NIE dotyka bezpieczeństwa.** Profilowanie tonu doradcy wg adresata
+(`audienceSteer` w [`anthropicAdvisor.js`](srv/advisor/anthropicAdvisor.js)) zwraca `null` dla
+`SAFETY_STOP` i `INTERVENE` — dymka kryzysowa i moderacja eskalacji są **identyczne niezależnie od
+płci** adresata. Detekcja kryzysu jest symetryczna (przemoc „ze strony partnera" w obie strony).
+
 ## Jak działa detekcja
 
 Po każdej turze (w trybie „Rozmawia") `decide` ocenia ostatnią wiadomość. Kryteria `SAFETY_STOP` są

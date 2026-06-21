@@ -10,7 +10,13 @@
  */
 const Anthropic = require('@anthropic-ai/sdk');
 // reguły zostają jako FALLBACK (gdy model decyzyjny padnie/zwróci zły JSON/timeout)
-const { decide: rulesDecide, isCouple, isSubstantive } = require('./decisionRules');
+const {
+  decide: rulesDecide,
+  isCouple,
+  isSubstantive,
+  FEELING_PROBE,
+  EVENT_DOOR_BANK,
+} = require('./decisionRules');
 const { activeModel } = require('./models');
 
 // Krótka instrukcja sterująca tonem/celem dymki wg typu decyzji.
@@ -48,6 +54,32 @@ const parkSteer = (decision) =>
         decision.topic ? ` „${decision.topic}”` : ''
       }. Nie rozwijaj nowego wątku teraz.`
     : null;
+
+// ── REJESTR EMPATII wg adresata dymki ─────────────────────────────────────────
+// To samo, pełne ciepło dla obojga — różni się DROGA dojścia do emocji, nie jej
+// natężenie. Płeć (przez rolę HER/HIM) jest miękkim priorem; bezpieczeństwo i
+// de-eskalacja zostają symetryczne (patrz audienceSteer → null dla SAFETY/INTERVENE).
+const REGISTER = {
+  HER: 'Adresat tej tury to kobieta. Zostań przy obecnym, sprawdzonym rejestrze: nazwij uczucie wprost, odbij je z empatią i delikatnie zaproś do głębszego nazwania potrzeby.',
+  HIM: 'Adresat tej tury to mężczyzna. Trzymaj PEŁNE ciepło, ale wchodź w emocje przez konkret i działanie, nie przez polecenie nazwania uczucia: pytaj, co się wydarzyło i co zrobił lub pomyślał w danym momencie, a uczucie nazwij sam, łagodnie, na podstawie tego, co mówi. Doceniaj wysiłek, intencję i odpowiedzialność, nie tylko kruchość. Bezpośredniość znaczy krótkie, konkretne, równe zdania mówione JAK DO PARTNERA, nie jak instruktaż — nie znaczy szorstko ani konfrontacyjnie; ciepło zostaje pełne. NIE pouczaj i nie zadawaj pytań-wyzwań stawiających go w roli winnego do poprawienia („czy potrafisz…", „co stoi na przeszkodzie, żebyś…" = ŹLE); nie dawaj mu zadań ani lekcji o jego charakterze. Gdy proponuje działanie („powiedz mi, co robić"), NAJPIERW uszanuj tę gotowość konkretnie, nie zamieniaj jej w wykład o tym, czego mu brakuje. Stój po jego stronie tak samo mocno, jak po jej — nie jesteś adwokatem partnerki wobec niego. Nigdy nie tłumacz, że dobierasz ton do płci, i nie uogólniaj o mężczyznach.',
+  TOGETHER:
+    'Adresat tej tury to oboje. Rejestr neutralny — nie faworyzuj języka żadnej strony. Gdzie pasuje, działaj jak tłumacz między dwoma językami tej samej potrzeby: pokaż, że potrzeba bliskości i odruch rozwiązania to dwa sposoby na to samo, żeby każde usłyszało troskę drugiego w jego własnym języku.',
+};
+
+/** Adresat dymki: typy do OBOJGA → TOGETHER; ASK_OTHER → nextSpeaker; reszta → bieżący mówca. */
+function replyAudience(decision, history) {
+  if (['SUMMARIZE', 'REFRAME', 'PROPOSE', 'CHOOSE'].includes(decision.type)) return 'TOGETHER';
+  if (decision.type === 'ASK_OTHER') return decision.nextSpeaker || 'TOGETHER';
+  const couple = history.filter(isCouple);
+  const last = couple[couple.length - 1];
+  return last ? last.author : 'TOGETHER';
+}
+
+/** Instrukcja rejestru wg adresata; null dla SAFETY_STOP/INTERVENE (symetria absolutna). */
+function audienceSteer(decision, history) {
+  if (decision.type === 'SAFETY_STOP' || decision.type === 'INTERVENE') return null;
+  return REGISTER[replyAudience(decision, history)] || REGISTER.TOGETHER;
+}
 
 // Persona doradcy — ciepły, empatyczny, neutralny mediator (jak w prototypie).
 // Trzymana jako stały prefiks z cache_control → tańsze odczyty przy każdej wiadomości.
@@ -146,7 +178,7 @@ TEMPO I GŁĘBIA — nie spiesz się. Zanim oddasz głos drugiej stronie (ASK_OT
 Zasady kolejności: SAFETY_STOP > INTERVENE > (bezpośrednia prośba o głos) > DEEPEN/ASK_OTHER (wg powyższego tempa) > reszta.
 "kind": "FULL" dla zwykłych dymek, "INTERVENTION" dla INTERVENE.
 "topic": ustaw/utrzymaj krótką kotwicę tematu. "nextSpeaker": HER/HIM/TOGETHER dla ASK_OTHER.
-"composerHint": KRÓTKA (do ~8 słów) podpowiedź wpisana w pole tekstowe dla osoby, która ma teraz pisać. ZAWSZE w 2. osobie, skierowana WPROST do tej osoby jak polecenie/pytanie do niej (np. „opowiedz o…", „co czujesz, gdy…", „zacznij od „czuję…"") — NIGDY w 3. osobie ani opisowo o niej („opisz moment, kiedy poczuła się…" = ŹLE; popraw na „kiedy poczułaś się…"). Ciepła, naprowadzająca na konstruktywny krok i DOPASOWANA do tematu rozmowy (nie ogólnik). Przy ASK_OTHER skieruj ją do nextSpeaker. Gdy Twoja dymka już zadaje pytanie, niech composerHint będzie krótkim dopowiedzeniem formy. Różnicuj ją z tury na turę — nie powtarzaj tej samej.
+"composerHint": KRÓTKA (do ~8 słów) podpowiedź wpisana w pole tekstowe dla osoby, która ma teraz pisać. ZAWSZE w 2. osobie, skierowana WPROST do tej osoby jak polecenie/pytanie do niej (np. „opowiedz o…", „co czujesz, gdy…", „zacznij od „czuję…"") — NIGDY w 3. osobie ani opisowo o niej („opisz moment, kiedy poczuła się…" = ŹLE; popraw na „kiedy poczułaś się…"). Ciepła, naprowadzająca na konstruktywny krok i DOPASOWANA do tematu rozmowy (nie ogólnik). DOBIERZ DRZWI WEJŚCIA wg PŁCI osoby, która ma teraz pisać (patrz mapa płci w stanie). Mężczyzna → DOMYŚLNIE otwórz przez zdarzenie/działanie („co się stało, gdy…", „co zrobiłeś, kiedy…", „co Ci wtedy chodziło po głowie?") i NIE używaj „co czujesz…", CHYBA że sam już pisze o sobie emocjami (np. „czuję się samotny", „przytłacza mnie"). Kobieta → wejście przez uczucie jest dobre („co czujesz, gdy…"). Płeć to domyślne drzwi, styl osoby to ewentualne nadpisanie. Oba rodzaje prowadzą do emocji; wejście przez zdarzenie nie każe zaczynać od nazwania uczucia na zimno. Przy ASK_OTHER skieruj ją do nextSpeaker. Gdy Twoja dymka już zadaje pytanie, niech composerHint będzie krótkim dopowiedzeniem formy. Różnicuj ją z tury na turę — nie powtarzaj tej samej.
 Liczników liczbowych NIE ustalasz — pomija je system.`;
 
 /** JSON Schema decyzji (tylko ocena jakościowa; liczniki liczy kod). */
@@ -176,10 +208,12 @@ async function modelDecide(history, state, context) {
   const prevHint = state.lastComposerHint
     ? ` Poprzednia podpowiedź do pola — NIE powtarzaj jej, zaproponuj wyraźnie inną: "${state.lastComposerHint}".`
     : '';
+  // mapa płci → reżyser dobiera „drzwi wejścia" composerHint wg płci piszącego (działa też przy imionach)
+  const genderMap = `Płeć mówców (do doboru drzwi wejścia): „${speakerLabel('HER', context)}" = kobieta, „${speakerLabel('HIM', context)}" = mężczyzna.`;
   const stateNote =
     `Stan rozmowy: faza=${state.phase || 'OPENING'}; kotwica=${state.topic || '(brak)'}; ` +
     `tryb=${state.advisorMode || 'LEADING'}; tur bez postępu=${state.turnsSinceProgress || 0}; ` +
-    `eskalacja=${state.escalationStreak || 0}; zaparkowane=${parked}.${prevHint}`;
+    `eskalacja=${state.escalationStreak || 0}; zaparkowane=${parked}. ${genderMap}${prevHint}`;
 
   const resp = await client.messages.create({
     model: activeModel(),
@@ -223,6 +257,19 @@ function deepenCountForCurrent(history) {
   return count;
 }
 
+// ── FLOOR drzwi wejścia (twardy prior płci na ZIMNYM STARCIE) ─────────────────
+// Gdy composerHint dla MĘŻCZYZNY otwiera przez „co czujesz", a on jest na zimnym
+// starcie (≤1 wypowiedź „z treścią" — jeszcze nie ustalił stylu) → podmień na
+// wejście przez zdarzenie. Później (≥2 jego tury z treścią) floor milczy i steruje
+// sam prompt. Bramka strukturalna (liczba tur) zastąpiła kruchą listę słów
+// INTROSPECTIVE — pomiar A/B pokazał, że nie zarabiała na siebie.
+// Stałe PL best-effort (FEELING_PROBE/EVENT_DOOR_BANK) żyją w decisionRules.js.
+
+/** Adresat composerHint (kto pisze dalej): nextSpeaker albo bieżący mówca. */
+function composerTarget(decision, last) {
+  return decision.nextSpeaker || (last ? last.author : 'TOGETHER');
+}
+
 /**
  * Domknięcie decyzji modelu: deterministyczne strażniki + liczniki.
  * - GŁĘBIA: liczbę pogłębień (DEEPEN) dobiera MODEL adaptacyjnie (0–2 wg sytuacji).
@@ -251,6 +298,20 @@ function finalizeDecision(d, history, state) {
       out.type = 'SUMMARIZE';
     }
     out.composerHint = undefined; // hint modelu był pod DEEPEN — niech zadziała fallback
+  }
+
+  // FLOOR drzwi wejścia: na ZIMNYM STARCIE mężczyzny (≤1 jego wypowiedź z treścią)
+  // męskie „co czujesz" → wejście przez zdarzenie; później prompt jest jedynym sterem.
+  if (out.shouldSpeak && out.composerHint && FEELING_PROBE.test(out.composerHint)) {
+    if (composerTarget(out, last) === 'HIM') {
+      const hisSubstantive = couple.filter(
+        (m) => m.author === 'HIM' && isSubstantive(m.text),
+      ).length;
+      if (hisSubstantive <= 1) {
+        const bank = EVENT_DOOR_BANK.filter((h) => h !== state.lastComposerHint);
+        out.composerHint = bank[history.length % bank.length];
+      }
+    }
   }
 
   // kind wyznacza TYP (nie ufamy modelowi): tylko INTERVENE = mała dymka,
@@ -293,6 +354,8 @@ module.exports = {
     if (decision && decision.type === 'INTERVENE') steer = interveneSteer(decision.escalationStreak);
     const system = [{ type: 'text', text: PERSONA, cache_control: { type: 'ephemeral' } }];
     system.push({ type: 'text', text: nameSteer(context) }); // jak zwracać się do pary
+    const reg = decision && audienceSteer(decision, history); // rejestr empatii wg adresata
+    if (reg) system.push({ type: 'text', text: reg });
     if (steer) system.push({ type: 'text', text: steer });
     const park = parkSteer(decision);
     if (park) system.push({ type: 'text', text: park });

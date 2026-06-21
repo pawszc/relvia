@@ -32,6 +32,25 @@ const DIGRESSION =
 const ESCALATION =
   /(idiot|debil|kretyn|głup|beznadziejn|żałosn|egoist|samolub|leniw|kłam|nienawidz|zamknij się|spierdal|pierdol|gówn|chrzań|kurwa|do diabła|olewasz|masz mnie gdzieś|przez ciebie|twoja wina|ty zawsze|ty nigdy)/i;
 
+// ── „Drzwi wejścia" composerHint (PL best-effort, jak wyżej) ───────────────────
+// Deterministyczny FLOOR doboru drzwi w composerHint: na zimnym starcie męskie
+// „co czujesz" zamieniamy na wejście przez zdarzenie. Działa TYLKO po polsku —
+// główny tor (semantyczny, wielojęzyczny) to prompt reżysera. Konsumuje to
+// anthropicAdvisor.finalizeDecision. „Zimny start" = bramka strukturalna (liczba
+// wypowiedzi „z treścią") liczona TAM, nie tu — językowo neutralna.
+// WIELOJĘZYCZNY UPGRADE (kiedyś): trigger PL `FEELING_PROBE` zastąpić etykietą drzwi
+// od modelu (composerHintDoor: FEELING|EVENT), a `EVENT_DOOR_BANK` — hintem od modelu
+// w danym języku; wtedy obie poniższe stałe znikają (opcja C z analizy).
+// FEELING_PROBE — hint pyta o uczucie wprost („co czujesz", „jak się czujesz").
+const FEELING_PROBE = /\b(co|jak)\b[^?]*\bczuj/i;
+// EVENT_DOOR_BANK — gotowe drzwi przez zdarzenie (ogólne, gdy floor podmienia hint).
+const EVENT_DOOR_BANK = [
+  'Co się stało, gdy to usłyszałeś?',
+  'Co Ci wtedy chodziło po głowie?',
+  'Co zrobiłeś w tamtym momencie?',
+  'Opowiedz, jak to wyglądało u Ciebie.',
+];
+
 /** Krzyk: ALL CAPS (≥6 liter) albo nagromadzenie wykrzykników. */
 function isShouting(text) {
   const letters = text.replace(/[^a-ząćęłńóśźżA-ZĄĆĘŁŃÓŚŹŻ]/g, '');
@@ -223,4 +242,13 @@ function decide(history, state = {}, context = {}) {
   };
 }
 
-module.exports = { decide, speakerLabel, isCouple, shorten, isSubstantive };
+module.exports = {
+  decide,
+  speakerLabel,
+  isCouple,
+  shorten,
+  isSubstantive,
+  // stałe „drzwi wejścia" (PL best-effort) konsumowane przez anthropicAdvisor.finalizeDecision
+  FEELING_PROBE,
+  EVENT_DOOR_BANK,
+};
