@@ -124,3 +124,21 @@ test('decide: treściwa wypowiedź zeruje turnsSinceProgress', () => {
   const d = decide([m('HER', LONG)], { turnsSinceProgress: 3 });
   assert.equal(d.turnsSinceProgress, 0);
 });
+
+test('decide: DRABINA NACISKU eskaluje wg turnsSinceProgress (negacja, obie strony mówiły)', () => {
+  // obie strony wypowiedziały się (≥2 → pomijamy ASK_OTHER), potem krótka negacja → drabina po newTsp=tsp+1
+  const ladder = [
+    [0, 'CLARIFY'], // newTsp=1
+    [1, 'REFRAME'], // newTsp=2
+    [2, 'NARROW'], // newTsp=3
+    [3, 'CHOOSE'], // newTsp=4
+    [4, 'PROPOSE'], // newTsp=5
+  ];
+  for (const [tsp, expected] of ladder) {
+    reset();
+    const hist = [m('HER', LONG), m('HIM', LONG), m('HER', 'nieprawda!')];
+    const d = decide(hist, { turnsSinceProgress: tsp });
+    assert.equal(d.type, expected, `tsp=${tsp} → ${expected}`);
+    assert.equal(d.turnsSinceProgress, tsp + 1);
+  }
+});

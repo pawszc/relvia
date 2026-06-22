@@ -21,6 +21,22 @@ const PROJECT = path.join(__dirname, '..', '..');
 const LONG = 'To jest dłuższa, treściwa wypowiedź o tym, co naprawdę czuję w tej sytuacji każdego dnia.';
 const MESSAGES = 'couple.adviser.Messages';
 
+// ten sam singleton warstwy AI co handler (require('./advisor/advisor')) → da się zaślepić
+const advisorImpl = require(path.join(PROJECT, 'srv/advisor/advisor'));
+
+/** Podmienia decide/generateReply na czas fn (przywraca w finally). */
+async function withAdvisorStub(stub, fn) {
+  const orig = { decide: advisorImpl.decide, generateReply: advisorImpl.generateReply };
+  if (stub.decide) advisorImpl.decide = stub.decide;
+  if (stub.generateReply) advisorImpl.generateReply = stub.generateReply;
+  try {
+    return await fn();
+  } finally {
+    advisorImpl.decide = orig.decide;
+    advisorImpl.generateReply = orig.generateReply;
+  }
+}
+
 let srv, db, server;
 before(async () => {
   server = cds.test(PROJECT);
@@ -124,6 +140,58 @@ test('WAIT: kontynuacja własnej myśli → doradca milczy (brak NOWEJ dymki)', 
 
   const advAfter = (await messagesOf(conversationId)).filter((m) => m.author === 'ADVISOR').length;
   assert.equal(advAfter, advBefore, 'WAIT nie dodaje nowej dymki doradcy');
+});
+
+test('fallback: gdy decide rzuca błąd → handler oddaje twardy SUMMARIZE (tura nie pada)', async () => {
+  const { conversationId } = await srv.send('startConversation', {});
+  await withAdvisorStub({ decide: async () => { throw new Error('boom'); } }, async () => {
+    const r = await srv.send('sendMessage', { conversationId, author: 'HER', text: LONG });
+    assert.ok(r.advisorMessageId, 'mimo błędu decide doradca odpowiedział');
+  });
+  const adv = (await messagesOf(conversationId)).find((m) => m.author === 'ADVISOR');
+  assert.equal(adv.decisionType, 'SUMMARIZE', 'twardy default reżysera po błędzie decide');
+});
+
+test('resolveParkedTopic: PROMOTE ustawia kotwicę na temat i zamyka go (OPEN→RESOLVED)', async () => {
+  const { conversationId } = await srv.send('startConversation', {});
+  await srv.send('sendMessage', { conversationId, author: 'HER', text: LONG }); // kotwica
+  await srv.send('sendMessage', {
+    conversationId, author: 'HIM',
+    text: 'A tak w ogóle to pogadajmy kiedyś o wakacjach nad morzem, inny temat.',
+  }); // dygresja → park
+  let st = await srv.send('conversationState', { conversationId });
+  const parked = st.parkedTopics.find((p) => p.status === 'OPEN');
+  assert.ok(parked, 'jest zaparkowany temat OPEN');
+
+  const r = await srv.send('resolveParkedTopic', { conversationId, topicId: parked.id, action: 'PROMOTE' });
+  assert.equal(r.ok, true);
+  st = await srv.send('conversationState', { conversationId });
+  assert.equal(st.topic, parked.text, 'PROMOTE ustawił kotwicę na temat');
+  assert.ok(!st.parkedTopics.some((p) => p.id === parked.id && p.status === 'OPEN'), 'temat już nie OPEN');
+});
+
+test('conversationUsage: niezerowe tokeny → rozbicie generacja vs decyzja + suma kosztu', async () => {
+  const { conversationId } = await srv.send('startConversation', {});
+  const fakeDecide = async () => ({
+    shouldSpeak: true, type: 'SUMMARIZE', kind: 'FULL', phase: 'PARAPHRASE',
+    turnsSinceProgress: 0, escalationStreak: 0,
+    usage: { inputTokens: 200, outputTokens: 30, cacheReadTokens: 0, cacheCreationTokens: 0 },
+  });
+  async function* fakeReply() {
+    yield { type: 'delta', text: 'ok' };
+    yield { type: 'end', text: 'ok', finishReason: 'end_turn', usage: { inputTokens: 100, outputTokens: 50, cacheReadTokens: 0, cacheCreationTokens: 0 } };
+  }
+  await withAdvisorStub({ decide: fakeDecide, generateReply: fakeReply }, async () => {
+    await srv.send('sendMessage', { conversationId, author: 'HER', text: LONG });
+  });
+
+  const u = await srv.send('conversationUsage', { conversationId });
+  assert.equal(u.inputTokens, 100, 'generacja in');
+  assert.equal(u.outputTokens, 50, 'generacja out');
+  assert.equal(u.decideInputTokens, 200, 'decyzja in (narastające)');
+  assert.equal(u.decideOutputTokens, 30, 'decyzja out');
+  assert.ok(u.generationCostUsd > 0 && u.decideCostUsd > 0, 'oba koszty niezerowe');
+  assert.ok(Math.abs(Number(u.costUsd) - (u.generationCostUsd + u.decideCostUsd)) < 1e-9, 'suma = generacja + decyzja');
 });
 
 // UWAGA: kolejność zdarzeń SSE na drucie (message.user → advisor.decision → advisor.start →

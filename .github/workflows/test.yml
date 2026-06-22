@@ -1,0 +1,24 @@
+name: tests
+
+# Wszystkie testy deterministyczne (0 tokenów): unit + integration (backend) + Vitest (front).
+# Eval modelu (test:eval) NIE jest tu uruchamiany — kosztuje tokeny i jest niedeterministyczny.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install backend deps
+        run: npm ci
+      - name: Install web deps
+        run: npm --prefix web ci
+      - name: Run all deterministic tests
+        run: npm run test:all
