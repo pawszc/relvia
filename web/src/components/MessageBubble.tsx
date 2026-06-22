@@ -2,7 +2,7 @@ import type { UiMessage } from '../hooks/useConversation';
 import Avatar from './Avatar';
 
 /**
- * Pojedynczy bąbel wiadomości (design „Relinder", kanał „dwa brzegi"). Wygląd zależy od autora:
+ * Pojedynczy bąbel wiadomości (design „Relvia", kanał „dwa brzegi"). Wygląd zależy od autora:
  *  - HER (Ona)   → lewy brzeg, awatar nad dymką, gradient terakota,
  *  - HIM (On)    → prawy brzeg, awatar nad dymką, gradient szałwia,
  *  - TOGETHER    → środek, „hero" z etykietą „Powiedzieliście to razem",

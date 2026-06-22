@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 /**
- * Awatar uczestnika rozmowy (design „Relinder").
+ * Awatar uczestnika rozmowy (design „Relvia").
  *  - HER / HIM → zdjęcie (web/public/avatars/ona.png · on.png),
  *  - ADVISOR   → neutralna sylwetka (doradca nie ma twarzy — jest „głosem między brzegami"),
  *  - fallback  → sylwetka w kolorze strony, gdy zdjęcie się nie wczyta.
