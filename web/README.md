@@ -1,11 +1,11 @@
-# Couple Adviser — Frontend (Faza 1)
+# Relvia — Frontend (Faza 1)
 
 React + Vite + TypeScript. Wariant wizualny **A4**. Backend jest **zamockowany po stronie frontu** — zero sieci, zero tokenów.
 
 ## Uruchomienie
 
 ```bash
-cd couple-adviser/web
+cd relvia/web
 npm install
 npm run dev
 ```

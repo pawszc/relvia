@@ -1,4 +1,4 @@
-# Couple Adviser — „Relinder"
+# Relvia
 
 Czat, w którym **para rozmawia z empatycznym AI‑doradcą relacji z jednego urządzenia**.
 Ona / On piszą naprzemiennie (albo „Razem"), a doradca jest **reżyserem rozmowy** — zawsze ją
@@ -37,10 +37,10 @@ web/  (React + Vite + TS)  ──/chat (OData + akcje + SSE)──▶  CAP (Node
 
 ## Konfiguracja środowiska
 
-Sekrety i tryb trzyma plik **`couple-adviser.env`** (gitignored). Skopiuj szablon i uzupełnij:
+Sekrety i tryb trzyma plik **`relvia.env`** (gitignored). Skopiuj szablon i uzupełnij:
 
 ```
-cp couple-adviser.env.example couple-adviser.env
+cp relvia.env.example relvia.env
 ```
 
 ```ini
@@ -55,14 +55,14 @@ Plik wczytuje [`srv/server.js`](srv/server.js) (dotenv) zanim załadują się us
 
 **Backend** (port 4004):
 ```
-cd couple-adviser
+cd relvia
 npx cds deploy      # tylko za pierwszym razem (tworzy db.sqlite); UWAGA: ponowny deploy czyści dane
 npx cds watch
 ```
 
 **Frontend** (Vite, proxy `/chat` → `:4004`):
 ```
-cd couple-adviser/web
+cd relvia/web
 npm install
 npm run dev
 ```
@@ -77,11 +77,11 @@ Front ma wbudowany mock klienta. Z `VITE_USE_MOCK=true` działa **bez** CAP i be
 ## Struktura
 
 ```
-couple-adviser/
+relvia/
 ├─ db/schema.cds            # model danych (stan reżysera, ParkedTopics, Messages)
 ├─ srv/
 │  ├─ chat-service.cds/.js  # usługa CAP: akcje + SSE + persystencja
-│  ├─ server.js             # bootstrap (wczytuje couple-adviser.env)
+│  ├─ server.js             # bootstrap (wczytuje relvia.env)
 │  └─ advisor/              # warstwa AI: advisor.js (wybór), anthropicAdvisor.js,
 │                           #   mockAdvisor.js, decisionRules.js (fallback+mock), models.js, pricing.js
 ├─ shared/chat-contract.ts  # wspólny kontrakt typów (front + backend)

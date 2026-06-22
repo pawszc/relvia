@@ -1,8 +1,8 @@
 {
-  "name": "couple-adviser",
+  "name": "relvia",
   "version": "0.0.0",
   "private": true,
-  "description": "Couple Adviser — backend (CAP/Node). NIE jest produktem SAP; nie korzysta z BTP.",
+  "description": "Relvia — backend (CAP/Node). NIE jest produktem SAP; nie korzysta z BTP.",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.69",
     "@cap-js/sqlite": "^1",

@@ -1,4 +1,4 @@
-namespace couple.adviser;
+namespace relvia;
 
 using { cuid, managed } from '@sap/cds/common';
 

@@ -16,9 +16,9 @@
 const fs = require('fs');
 const path = require('path');
 
-// ── env (jak server.js: dotenv z couple-adviser.env) ──────────────────────────
+// ── env (jak server.js: dotenv z relvia.env) ──────────────────────────
 const ROOT = path.join(__dirname, '..', '..');
-const envText = fs.readFileSync(path.join(ROOT, 'couple-adviser.env'), 'utf8');
+const envText = fs.readFileSync(path.join(ROOT, 'relvia.env'), 'utf8');
 for (const line of envText.split('\n')) {
   if (line.trim().startsWith('#')) continue;
   const mt = line.match(/^\s*([A-Z_]+)\s*=\s*(.+?)\s*$/);

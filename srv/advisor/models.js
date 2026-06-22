@@ -1,7 +1,7 @@
 /**
  * Dostępne modele Anthropic + cennik (USD za 1M tokenów) — JEDNO ŹRÓDŁO PRAWDY.
  *
- * Aktywny model wybiera zmienna środowiskowa ADVISOR_MODEL (couple-adviser.env);
+ * Aktywny model wybiera zmienna środowiskowa ADVISOR_MODEL (relvia.env);
  * gdy nieustawiona/nieznana → DEFAULT_MODEL.
  *
  * Cache (Anthropic): odczyt ~0.1× wejścia, zapis 5 min ~1.25× wejścia.

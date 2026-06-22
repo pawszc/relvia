@@ -1,4 +1,4 @@
-# Testy — Couple Adviser
+# Testy — Relvia
 
 Dwie rozłączne warstwy:
 
@@ -43,7 +43,7 @@ Kategorie korpusu ([scenarios.js](eval/scenarios.js)):
 Raport: stdout + [`eval/last-report.md`](eval/last-report.md). Koszt liczony tym samym
 `costUsd` co aplikacja, rozbity na Haiku (doradca+reżyser) i Opus (sędzia).
 
-Wymaga `couple-adviser.env` z `ANTHROPIC_API_KEY` (wczytywany jak w `server.js`).
+Wymaga `relvia.env` z `ANTHROPIC_API_KEY` (wczytywany jak w `server.js`).
 
 ## 2. Unit testy (`test/unit/`) — 0 tokenów, do CI
 
@@ -73,7 +73,7 @@ npm run test:int   # node --test, boot CAP (cds.test) + mock warstwy AI
 Pełna orkiestracja `chat-service.js` (decide → persystencja → generateReply → sanitize →
 INSERT → liczniki/tokeny) z **mockiem** warstwy AI (deterministyczny, 0 tokenów). Wymusza
 `ADVISOR=mock` PRZED `require('@sap/cds')` (dotenv w `server.js` nie nadpisuje już ustawionych
-zmiennych → `couple-adviser.env` z `ADVISOR=anthropic` nie wygrywa). `cds.test` dla sqlite sam
+zmiennych → `relvia.env` z `ADVISOR=anthropic` nie wygrywa). `cds.test` dla sqlite sam
 używa izolowanej bazy **in-memory** — dev-owa `db.sqlite` nietknięta.
 
 Pokrycie ([handler.test.js](integration/handler.test.js)): `startConversation`; zwykła tura

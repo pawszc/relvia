@@ -1,4 +1,4 @@
-# Silnik rozmowy (turn-taking engine) — Couple Adviser
+# Silnik rozmowy (turn-taking engine) — Relvia
 
 Dokumentacja koncepcyjna i behawioralna „reżysera rozmowy". Czytaj razem z:
 kontrakt protokołu → [`CONTRACT.md`](CONTRACT.md) · typy → [`shared/chat-contract.ts`](shared/chat-contract.ts) ·

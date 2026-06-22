@@ -1,4 +1,4 @@
-# Couple Adviser — specyfikacja techniczna
+# Relvia — specyfikacja techniczna
 
 Ten dokument tłumaczy **jak aplikacja jest zbudowana i dlaczego** — z myślą o developerze na poziomie
 **junior/mid**. Pojęcia, które mogą być nowe (SSE, structured output, async generatory, prompt caching,
@@ -323,7 +323,7 @@ zastąpić trigger etykietą drzwi od modelu i bank — hintem modelu w danym j�
 
 ## 9. Model danych i persystencja
 
-Model w `db/schema.cds` (namespace `couple.adviser`). Trzy encje:
+Model w `db/schema.cds` (namespace `relvia`). Trzy encje:
 
 ### `Conversations` — sesja + **stan reżysera**
 
@@ -397,7 +397,7 @@ do dev/demo. `advisor.js` wybiera implementację leniwie (w trybie mock SDK Anth
 
 ### Zmienne środowiskowe
 
-Trzyma je plik **`couple-adviser.env`** (gitignored; szablon `couple-adviser.env.example`):
+Trzyma je plik **`relvia.env`** (gitignored; szablon `relvia.env.example`):
 
 ```ini
 ADVISOR=anthropic            # mock | anthropic   (mock = 0 tokenów)
@@ -412,12 +412,12 @@ ANTHROPIC_API_KEY=sk-ant-... # wymagany tylko gdy ADVISOR=anthropic
 
 ```
 # backend (port 4004)
-cd couple-adviser
+cd relvia
 npx cds deploy      # tylko za pierwszym razem (tworzy db.sqlite); UWAGA: ponowny deploy czyści dane
 npx cds watch
 
 # frontend (Vite, proxy /chat → :4004)
-cd couple-adviser/web
+cd relvia/web
 npm install
 npm run dev
 ```
@@ -448,7 +448,7 @@ Tryb front-only: `VITE_USE_MOCK=true` → UI działa bez backendu (mock streamin
 | `db/schema.cds` | model danych (stan reżysera, `ParkedTopics`, `Messages`) |
 | `srv/chat-service.cds` | deklaracja usługi (encje read-only + akcje + funkcja) |
 | `srv/chat-service.js` | **handler**: orkiestracja tury, SSE („Plan A"), persystencja, sanityzacja, koszty |
-| `srv/server.js` | bootstrap — ładuje `couple-adviser.env` |
+| `srv/server.js` | bootstrap — ładuje `relvia.env` |
 | `srv/advisor/advisor.js` | wybór implementacji AI wg `ADVISOR` (leniwy require) |
 | `srv/advisor/anthropicAdvisor.js` | realny model: `decide` (structured output) + `generateReply` (streaming) + rejestr + floor |
 | `srv/advisor/mockAdvisor.js` | mock generacji (kanned, 0 tokenów) |

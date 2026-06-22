@@ -1,4 +1,4 @@
-using couple.adviser as db from '../db/schema';
+using relvia as db from '../db/schema';
 
 /**
  * Usługa czatu. Ścieżka bazowa: /chat

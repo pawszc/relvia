@@ -2,24 +2,36 @@
  * Integration handlera ChatService — pełna orkiestracja (decide → persystencja →
  * generateReply → sanitize → INSERT → liczniki/tokeny), z MOCKIEM warstwy AI.
  *
- * 0 TOKENÓW, deterministycznie: wymuszamy ADVISOR=mock PRZED require('@sap/cds')
- * (dotenv w server.js nie nadpisuje już ustawionych zmiennych → couple-adviser.env
- * z ADVISOR=anthropic NIE wygrywa). Bazy nie konfigurujemy — cds.test dla sqlite sam
- * wymusza izolowaną bazę IN-MEMORY (nie dotyka dev-owej db.sqlite).
+ * 0 TOKENÓW, deterministycznie: wymuszamy ADVISOR=mock i bazę IN-MEMORY PRZED require('@sap/cds')
+ * (dotenv w server.js nie nadpisuje już ustawionych zmiennych → relvia.env z ADVISOR=anthropic
+ * NIE wygrywa). `:memory:` → cds.test świeżo deployuje schemat z ŹRÓDŁA (zawsze aktualny namespace),
+ * izolowany od dev-owej db.sqlite (której nie dotykamy) i bez potrzeby pliku w CI.
  *
  * Rozdział: TU sprawdzamy, czy ORKIESTRACJA działa (stan, persystencja, pauza=0 modelu,
  * koszt, kolejność SSE). Czy AI dobrze się ZACHOWUJE — mierzy eval (test/eval).
  */
-process.env.ADVISOR = 'mock';
-
 const path = require('path');
+const os = require('os');
+const fs = require('fs');
+
+// Izolowana baza testowa: wspólny PLIK tymczasowy. NIE `:memory:` — pod `node --test`
+// cds.test i handler trafiają w RÓŻNE połączenia in-memory (better-sqlite3 daje osobną
+// bazę per połączenie → split → „no such table"). Plik widzą wszystkie połączenia.
+// Schemat deployujemy JAWNIE (cds.test nie auto-deployuje do pliku). Dev db.sqlite nietknięta;
+// w CI nie trzeba żadnego pliku. ADVISOR=mock + url PRZED require('@sap/cds').
+const DB_FILE = path.join(os.tmpdir(), `relvia-itest-${process.pid}.sqlite`);
+process.env.ADVISOR = 'mock';
+process.env.cds_requires_db_credentials_url = DB_FILE;
+
+const { execFileSync } = require('child_process');
 const cds = require('@sap/cds');
-const { before, test } = require('node:test');
+const { before, after, test } = require('node:test');
 const assert = require('node:assert/strict');
+const rmDb = () => { for (const f of [DB_FILE, `${DB_FILE}-wal`, `${DB_FILE}-shm`]) try { fs.unlinkSync(f); } catch {} };
 
 const PROJECT = path.join(__dirname, '..', '..');
 const LONG = 'To jest dłuższa, treściwa wypowiedź o tym, co naprawdę czuję w tej sytuacji każdego dnia.';
-const MESSAGES = 'couple.adviser.Messages';
+const MESSAGES = 'relvia.Messages';
 
 // ten sam singleton warstwy AI co handler (require('./advisor/advisor')) → da się zaślepić
 const advisorImpl = require(path.join(PROJECT, 'srv/advisor/advisor'));
@@ -37,15 +49,21 @@ async function withAdvisorStub(stub, fn) {
   }
 }
 
-let srv, db, server;
+let srv, server;
 before(async () => {
+  rmDb(); // świeża baza na start
+  // Deploy schematu do pliku przez CLI (sprawdzone; cds.test pod node:test nie deployuje
+  // niezawodnie, a programowy cds.deploy bywa kapryśny). Potem cds.test łączy się z tym plikiem.
+  execFileSync('npx', ['cds', 'deploy', '--to', `sqlite:${DB_FILE}`], { cwd: PROJECT, stdio: 'ignore', shell: true });
   server = cds.test(PROJECT);
   await server;
   srv = await cds.connect.to('ChatService');
-  db = await cds.connect.to('db');
 });
+after(rmDb);
 
-const messagesOf = (cid) => db.read(MESSAGES).where({ conversation_ID: cid }).orderBy('seq');
+// czytamy z cds.db (ta SAMA baza, do której pisze handler). W trybie :memory: osobne
+// cds.connect.to('db') otwierałoby NOWĄ, pustą bazę (split → „no such table").
+const messagesOf = (cid) => cds.db.read(MESSAGES).where({ conversation_ID: cid }).orderBy('seq');
 
 test('startConversation: zwraca id + domyślne imiona Ona/On', async () => {
   const r = await srv.send('startConversation', { title: 'test' });

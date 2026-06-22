@@ -1,4 +1,4 @@
-# Kontrakt usługi CAP — Couple Adviser
+# Kontrakt usługi CAP — Relvia
 
 Jedno źródło prawdy dla frontu (mock i realny), backendu CAP i integracji AI.
 Typy: [`shared/chat-contract.ts`](shared/chat-contract.ts) · Model: [`db/schema.cds`](db/schema.cds) · Usługa: [`srv/chat-service.cds`](srv/chat-service.cds)
