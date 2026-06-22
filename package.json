@@ -16,7 +16,9 @@
   "scripts": {
     "deploy": "cds deploy",
     "watch": "cds watch",
-    "start": "cds-serve"
+    "start": "cds-serve",
+    "test": "node --test \"test/unit/**/*.test.js\"",
+    "test:eval": "node test/eval/run-eval.js"
   },
   "cds": {
     "requires": {

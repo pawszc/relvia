@@ -100,11 +100,24 @@ Zwracane przez `decide`. Określają, czy Advisor mówi i jaki ma cel tury.
 | `CHOOSE` | tak | kilka wątków naraz | wybrać jeden temat, resztę odłożyć |
 | `PROPOSE` | tak | głęboka pętla / obie strony zrozumiane | zaproponować 1–3 małe kroki |
 | `SUMMARIZE` | tak | wypowiedziały się obie strony „z treścią" | parafraza uczuć i potrzeb obojga |
-| `INTERVENE` | tak | eskalacja | krótka moderacja w „luce przekazania" (mała dymka) |
-| `SAFETY_STOP` | tak | sygnał kryzysu/przemocy | zatrzymać mediację; odesłać do profesjonalnej pomocy/służb |
+| `INTERVENE` | tak | eskalacja **wzajemna** (obie strony) | krótka moderacja w „luce przekazania" (mała dymka) |
+| `PROTECT` | tak | **wzorzec krzywdy jednej strony** (pogarda, kontrola, DARVO, gaslighting), poniżej progu `SAFETY_STOP` | NIE mediować symetrycznie; walidować realność skrzywdzonej osoby, nazwać wzorzec, stanąć po stronie jej godności |
+| `SAFETY_STOP` | tak | sygnał kryzysu/przemocy (zagrożenie życia/zdrowia) | zatrzymać mediację; odesłać do profesjonalnej pomocy/służb |
 
 **Rodzaj dymki** (`AdvisorBubbleKind`) steruje renderem: `INTERVENTION` (mała, wyróżniona — tylko `INTERVENE`),
-`FULL` (duża — cała reszta, w tym `SAFETY_STOP`). Kind wyznacza KOD wg typu (nie ufamy `kind` z modelu).
+`FULL` (duża — cała reszta, w tym `PROTECT` i `SAFETY_STOP`). Kind wyznacza KOD wg typu (nie ufamy `kind` z modelu).
+
+**`PROTECT` — tor ochronny (asymetria ofiara/sprawca).** Trzecia kategoria między zwykłym konfliktem a kryzysem:
+gdy z rozmowy wyłania się WZORZEC krzywdy jednej strony (pogarda, coercive control, DARVO, gaslighting, szantaż),
+ale poniżej progu zagrożenia życia. Kluczowe odróżnienie: `INTERVENE` = eskalacja **wzajemna** (obie strony tak
+samo); `PROTECT` = **asymetria** (jedna osoba krzywdzi, druga jest tego obiektem). Doradca wtedy NIE mediuje
+symetrycznie — waliduje realność skrzywdzonej osoby, łagodnie nazywa wzorzec i staje po stronie jej godności
+(„krzywda nie jest racją, którą się waży"). Jak `SAFETY_STOP`/`INTERVENE` tor jest **symetryczny względem płci**:
+`audienceSteer`/`audienceBinding` zwracają `null` (bez rejestru wg płci) — patrz [`SAFETY.md`](SAFETY.md).
+Detekcja jest **model‑only** (semantyczna, wielojęzyczna); reguły fallbacku/mock celowo NIE wykrywają PROTECT
+(jak niuanse `SAFETY_STOP` — regex po polsku się nie skaluje). Kalibracja: model dostaje twardy strażnik przed
+fałszywym alarmem (zwykła kłótnia, obustronne obwinianie, metafory = NIE PROTECT) — zweryfikowany evalem
+(NADUZYCIE treść 2/10 → 9/10, **zero fałszywych pozytywów** w zestawie kalibracyjnym; patrz [`test/`](test/README.md)).
 
 **`composerHint`** — krótka, kontekstowa podpowiedź do pola wpisywania dla następnej osoby (placeholder).
 Generuje ją model w `decide`; różnicowana z tury na turę (poprzednia trafia do promptu jako „nie powtarzaj").

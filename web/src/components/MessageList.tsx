@@ -22,7 +22,7 @@ interface Props {
   onRetry: (clientId: string) => void;
 }
 
-const TO_BOTH = new Set(['SUMMARIZE', 'REFRAME', 'PROPOSE', 'CHOOSE']);
+const TO_BOTH = new Set(['SUMMARIZE', 'REFRAME', 'PROPOSE', 'CHOOSE', 'PROTECT']);
 const sideForAuthor = (a: Author): AdvisorSide => (a === 'HER' ? 'left' : a === 'HIM' ? 'right' : 'center');
 
 /** Do którego brzegu pochyla się dymka doradcy o indeksie `i` (wg adresata). */

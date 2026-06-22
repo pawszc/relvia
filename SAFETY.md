@@ -14,8 +14,9 @@ regexach (po polsku się nie skalują, a celujemy w wiele języków).
 
 **Rejestr empatii wg płci NIE dotyka bezpieczeństwa.** Profilowanie tonu doradcy wg adresata
 (`audienceSteer` w [`anthropicAdvisor.js`](srv/advisor/anthropicAdvisor.js)) zwraca `null` dla
-`SAFETY_STOP` i `INTERVENE` — dymka kryzysowa i moderacja eskalacji są **identyczne niezależnie od
-płci** adresata. Detekcja kryzysu jest symetryczna (przemoc „ze strony partnera" w obie strony).
+`SAFETY_STOP`, `INTERVENE` i `PROTECT` — dymka kryzysowa, moderacja eskalacji i tor ochronny są
+**identyczne niezależnie od płci** adresata. Detekcja kryzysu jest symetryczna (przemoc „ze strony
+partnera" w obie strony); tor `PROTECT` (asymetria ofiara/sprawca) też nie profiluje tonu płcią.
 
 ## Jak działa detekcja
 
@@ -40,6 +41,25 @@ Dymka doradcy ([`DECISION_STEER.SAFETY_STOP`](srv/advisor/anthropicAdvisor.js)):
 powagę, mówi, że najważniejsze jest bezpieczeństwo, i zachęca do **natychmiastowego kontaktu z
 profesjonalistą lub służbami, podając konkretny numer**. Render: pełna, wyraźna dymka (`kind:FULL`
 wymuszane przez kod). `sanitizeAdvisor` czyści markdown, ale **nie usuwa numerów**.
+
+## Tor ochronny `PROTECT` (asymetria ofiara/sprawca, PONIŻEJ progu kryzysu)
+
+Między zwykłą mediacją a `SAFETY_STOP` jest trzecia kategoria. Neutralny mediator („nie oceniam, kto ma rację")
+tworzył **fałszywą symetrię**, gdy jedna strona jest sprawcą (pogarda, coercive control, DARVO, gaslighting,
+szantaż), a druga ofiarą — równał krzywdę z odczuciem sprawcy i kazał skrzywdzonej osobie „mówić o sobie zamiast
+oceniać" (re‑wiktymizacja). Typ decyzji **`PROTECT`** zamyka tę lukę: doradca NIE mediuje symetrycznie — waliduje
+realność skrzywdzonej osoby, nazywa wzorzec i staje po stronie jej godności (PERSONA: „krzywda nie jest racją,
+którą się waży; godność i bezpieczeństwo są ważniejsze niż symetria"). Może łagodnie wskazać wsparcie indywidualne.
+
+- **Granica wobec `INTERVENE`:** `INTERVENE` = eskalacja **wzajemna** (obie strony); `PROTECT` = **asymetria**
+  (jedna krzywdzi, druga jest obiektem). Granica wobec `SAFETY_STOP` = brak bezpośredniego zagrożenia życia/zdrowia.
+- **Symetria płci zachowana:** tak jak dla `SAFETY_STOP`/`INTERVENE`, `audienceSteer`/`audienceBinding` zwracają
+  `null` dla `PROTECT` — **bez profilowania tonu wg płci**. Render: pełna dymka (`kind:FULL`), wyśrodkowana.
+- **Detekcja model‑only.** Kryteria w `DECIDE_SYSTEM` (semantycznie, wielojęzycznie) z **twardym strażnikiem
+  przed fałszywym alarmem** (zwykła kłótnia / obustronne obwinianie / metafory = NIE `PROTECT`). Reguły fallbacku
+  i mock celowo NIE wykrywają `PROTECT` (jak niuanse `SAFETY_STOP`).
+- **Zweryfikowane evalem** ([`test/`](test/README.md)): treść dymek w nadużyciu 2/10 → 9/10, **zero fałszywych
+  pozytywów** w zestawie kalibracyjnym, kryzys i zachowania bazowe nienaruszone.
 
 ## Warstwy i fallback
 

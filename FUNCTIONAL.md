@@ -133,8 +133,9 @@ bezpośredniego pytania to błąd.
 | **Wybór wątku** | tak | Na stole kilka spraw naraz | Proponuje wybrać jedną, najważniejszą; resztę odłożyć |
 | **Propozycja kroków** | tak | Rozmowa się zapętla albo obie strony już się rozumieją | Proponuje 1–3 małe, konkretne kroki do wypróbowania |
 | **Parafraza obojga** | tak | Obie strony wypowiedziały się „z treścią" | Streszcza uczucia i potrzeby **obu** osób, zanim cokolwiek zaproponuje |
-| **Moderacja (interwencja)** | tak | Eskalacja: atak personalny, pogarda, wyzwiska, krzyk, obwinianie | **Mała, wyróżniona dymka** — łagodzi napięcie, prosi mówić o sobie zamiast oskarżać; nie staje po stronie |
-| **Stop bezpieczeństwa** | tak | Sygnał przemocy, samookaleczenia, myśli samobójczych, zagrożenia | **Przerywa mediację**, kieruje do profesjonalnej pomocy/służb z konkretnym numerem (patrz §12) |
+| **Moderacja (interwencja)** | tak | Eskalacja **wzajemna**: obie strony atakują, podnoszą głos, obwiniają się | **Mała, wyróżniona dymka** — łagodzi napięcie, prosi mówić o sobie zamiast oskarżać; nie staje po stronie |
+| **Ochrona** | tak | **Wzorzec krzywdy jednej strony** (poniżanie, kontrola, przerzucanie winy, gaslighting), poniżej progu zagrożenia | **Nie mediuje symetrycznie** — potwierdza realność tego, co przeżywa skrzywdzona osoba, łagodnie nazywa wzorzec, staje po stronie jej godności; może wskazać wsparcie indywidualne (patrz §12) |
+| **Stop bezpieczeństwa** | tak | Sygnał przemocy, samookaleczenia, myśli samobójczych, zagrożenia życia/zdrowia | **Przerywa mediację**, kieruje do profesjonalnej pomocy/służb z konkretnym numerem (patrz §12) |
 
 ### 5.4 Tempo i głębia (pogłębianie adaptacyjne)
 
@@ -214,7 +215,7 @@ Oba prowadzą do tej samej emocji — drugie po prostu nie każe zaczynać od na
 
 ### 6.5 Granica: rejestr nigdy nie dotyka bezpieczeństwa
 
-Przy **stopie bezpieczeństwa** i **moderacji eskalacji** dostrajanie tonu wg płci jest **wyłączone**.
+Przy **stopie bezpieczeństwa**, **moderacji eskalacji** i **ochronie** (asymetria ofiara/sprawca, §12) dostrajanie tonu wg płci jest **wyłączone**.
 Dymka kryzysowa i łagodzenie kłótni są **identyczne niezależnie od płci** adresata, a wykrywanie
 przemocy jest symetryczne (przemoc „ze strony partnera" w obie strony). Profil empatii to wyłącznie
 sprawa zwykłej mediacji.
@@ -321,6 +322,15 @@ metafora nie jest alarmem, co chroni przed fałszywymi alarmami.
 - mówi, że teraz najważniejsze jest bezpieczeństwo;
 - zachęca do **natychmiastowego kontaktu z profesjonalistą lub służbami, podając konkretny numer**;
 - nie udaje terapeuty.
+
+**Tor ochronny (poniżej progu kryzysu).** Osobna kategoria między zwykłą mediacją a stopem bezpieczeństwa:
+gdy widać **wzorzec krzywdy jednej strony** wobec drugiej (poniżanie, kontrola/izolacja, przerzucanie całej
+winy, gaslighting, szantaż), ale bez bezpośredniego zagrożenia życia. Neutralny mediator tworzyłby tu
+**fałszywą symetrię** (równałby krzywdę z odczuciem sprawcy, kazałby ofierze „mówić o sobie zamiast oceniać").
+Zamiast tego doradca **nie mediuje symetrycznie**: potwierdza realność tego, co przeżywa skrzywdzona osoba
+(„to nie jest w porządku i nie jest Twoją winą"), łagodnie nazywa wzorzec i staje po stronie jej godności;
+może wskazać wsparcie indywidualne. Odróżnia to od **wzajemnej** kłótni (gdzie ogień jest po obu stronach —
+wtedy moderacja, nie ochrona) — z twardym strażnikiem przed fałszywym alarmem (zwykły konflikt ≠ przemoc).
 
 **Świadome kompromisy** (decyzje produktowe, szerzej w [SAFETY.md](SAFETY.md)):
 - W trybie **„Tylko słucha" detekcja jest wyłączona** (model nie jest wołany) — celowo, „to ich prywatna

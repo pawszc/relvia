@@ -49,7 +49,8 @@ export type AdvisorDecisionType =
   | 'CHOOSE' // wybierzmy jeden temat ze stołu
   | 'SUMMARIZE' // parafraza obu stron
   | 'PROPOSE' // 1–3 małe kroki
-  | 'INTERVENE' // eskalacja w trakcie rozmowy
+  | 'INTERVENE' // eskalacja w trakcie rozmowy (WZAJEMNA, symetryczna)
+  | 'PROTECT' // tor ochronny: wzorzec krzywdy jednej strony, poniżej progu SAFETY_STOP — staje po stronie godności skrzywdzonej osoby
   | 'SAFETY_STOP'; // tor bezpieczeństwa (priorytet ponad wszystkim)
 
 /** Zaparkowana dygresja — lista "do omówienia później". (Persystencja od kroku 2.) */

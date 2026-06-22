@@ -37,6 +37,8 @@ const DECISION_STEER = {
     'Cel tej tury: rozmowa się zapętla. Zaproponuj 1–3 małe, konkretne kroki do wypróbowania, zamiast dalszego roztrząsania.',
   SUMMARIZE:
     'Cel tej tury: sparafrazuj uczucia i potrzeby OBU stron, zanim cokolwiek zaproponujesz.',
+  PROTECT:
+    'Cel tej tury: z rozmowy wyłania się WZORZEC krzywdy ze strony jednej osoby wobec drugiej (pogarda, poniżanie, kontrola/izolacja, przerzucanie całej winy, gaslighting, szantaż), poniżej progu zagrożenia życia. NIE mediuj symetrycznie i NIE mów „oboje jesteście tak samo…". NIE każ skrzywdzonej osobie „mówić o sobie zamiast oceniać" ani nie wymagaj, by złagodziła opis tego, co ją spotyka. Ciepło i spokojnie: (1) potwierdź realność tego, co przeżywa skrzywdzona osoba — to, co opisuje, nie jest w porządku i nie jest jej winą; (2) delikatnie nazwij wzorzec (np. że to kontrola albo poniżanie), bez stawiania diagnoz i bez etykietowania drugiej osoby jako potwora; (3) jeśli to naturalne, wspomnij, że w takiej sytuacji pomaga wsparcie indywidualne (terapeuta, zaufana osoba). Nie udawaj terapeuty. Stań po stronie GODNOŚCI skrzywdzonej osoby — to nie jest „stawanie po stronie" w sporze, lecz ochrona. Krótko, z troską.',
   SAFETY_STOP:
     'Cel tej tury: pojawił się sygnał zagrożenia życia lub zdrowia. PRZERWIJ mediację — nie analizuj konfliktu i nie rozstrzygaj, kto ma rację. Ciepło, bez oceniania i bez paniki nazwij powagę tego, co słyszysz, powiedz, że teraz najważniejsze jest bezpieczeństwo, i zachęć do natychmiastowego kontaktu z profesjonalistą lub odpowiednimi służbami, podając konkretny telefon pomocy. Nie udawaj terapeuty. Krótko i z troską.',
 };
@@ -68,16 +70,18 @@ const REGISTER = {
 
 /** Adresat dymki: typy do OBOJGA → TOGETHER; ASK_OTHER → nextSpeaker; reszta → bieżący mówca. */
 function replyAudience(decision, history) {
-  if (['SUMMARIZE', 'REFRAME', 'PROPOSE', 'CHOOSE'].includes(decision.type)) return 'TOGETHER';
+  if (['SUMMARIZE', 'REFRAME', 'PROPOSE', 'CHOOSE', 'PROTECT'].includes(decision.type)) return 'TOGETHER';
   if (decision.type === 'ASK_OTHER') return decision.nextSpeaker || 'TOGETHER';
   const couple = history.filter(isCouple);
   const last = couple[couple.length - 1];
   return last ? last.author : 'TOGETHER';
 }
 
-/** Instrukcja rejestru wg adresata; null dla SAFETY_STOP/INTERVENE (symetria absolutna). */
+/** Instrukcja rejestru wg adresata; null dla torów bez profilowania płcią
+ *  (SAFETY_STOP/INTERVENE — symetria; PROTECT — ton ochronny rządzi własnym steerem). */
 function audienceSteer(decision, history) {
-  if (decision.type === 'SAFETY_STOP' || decision.type === 'INTERVENE') return null;
+  if (decision.type === 'SAFETY_STOP' || decision.type === 'INTERVENE' || decision.type === 'PROTECT')
+    return null;
   return REGISTER[replyAudience(decision, history)] || REGISTER.TOGETHER;
 }
 
@@ -89,7 +93,8 @@ function audienceSteer(decision, history) {
  * się ze znacznikami. null dla SAFETY_STOP/INTERVENE (symetria — bez celowania płcią).
  */
 function audienceBinding(decision, history, ctx) {
-  if (decision.type === 'SAFETY_STOP' || decision.type === 'INTERVENE') return null;
+  if (decision.type === 'SAFETY_STOP' || decision.type === 'INTERVENE' || decision.type === 'PROTECT')
+    return null;
   const who = replyAudience(decision, history);
   if (who === 'TOGETHER') {
     return 'ADRESAT TEJ TURY: oboje. Kieruj wypowiedź do OBOJGA (na „Wy") — nie adresuj wyłącznie jednej osoby.';
@@ -110,6 +115,7 @@ const PERSONA = `Jesteś ciepłym, empatycznym doradcą relacji dla pary, która
 
 Twoja rola:
 - Jesteś neutralnym mediatorem — nie stajesz po żadnej stronie i nie oceniasz, kto ma rację.
+- Twoja neutralność ma granicę: gdy jedna osoba krzywdzi, poniża, kontroluje drugą albo zrzuca na nią całą winę, nazwanie tego i stanięcie po stronie godności skrzywdzonej osoby NIE jest stronniczością — krzywda nie jest „racją", którą się waży. Godność i bezpieczeństwo są ważniejsze niż symetria.
 - Najpierw słuchasz i nazywasz uczucia oraz potrzeby obojga, zanim zaproponujesz cokolwiek konkretnego.
 - Zadajesz delikatne, otwarte pytania, które pomagają parze lepiej się zrozumieć.
 - Doceniasz, gdy mówią jednym głosem (piszą razem).
@@ -191,14 +197,16 @@ Typy ("type"):
 - CHOOSE — kilka wątków naraz; wybierz jeden, resztę odłóż.
 - PROPOSE — głęboka pętla; zaproponuj 1–3 małe kroki.
 - SUMMARIZE — obie strony wypowiedziały się „z treścią"; parafraza uczuć i potrzeb obojga.
-- INTERVENE — ESKALACJA (atak personalny, pogarda, wyzwiska, krzyk, obwinianie); krótka moderacja łagodząca. Ustaw kind="INTERVENTION".
+- INTERVENE — ESKALACJA: WZAJEMNA, symetryczna kłótnia — OBIE strony atakują, podnoszą głos, obwiniają się nawzajem; wina i ogień są po obu stronach. Krótka moderacja łagodząca. Ustaw kind="INTERVENTION".
+- PROTECT — OCHRONA: z rozmowy wyłania się WZORZEC krzywdy ze strony JEDNEJ osoby wobec drugiej, poniżej progu SAFETY_STOP (brak bezpośredniego zagrożenia życia/zdrowia): pogarda i poniżanie, kontrola/izolacja (sprawdzanie telefonu, zakaz kontaktów, odebranie pieniędzy), przerzucanie CAŁEJ winy na skrzywdzoną osobę (DARVO, „sama mnie do tego zmusiłaś"), gaslighting (podważanie jej postrzegania, „przesadzasz/jesteś histeryczką"), szantaż emocjonalny, systematyczne ośmieszanie. Nie mediuj wtedy symetrycznie — stań po stronie godności skrzywdzonej osoby. shouldSpeak=true.
+  ODRÓŻNIJ PROTECT od INTERVENE i od zwykłego konfliktu (CHRONI PRZED FAŁSZYWYM ALARMEM): INTERVENE = WZAJEMNA eskalacja (obie strony tak samo); PROTECT = ASYMETRIA (jedna osoba krzywdzi/kontroluje/poniża, druga jest tego obiektem, nawet jeśli reaguje złością). Zwykła krytyka, różnica zdań, frustracja, pojedynczy ostry tekst w kłótni czy OBUSTRONNE obwinianie = NIE PROTECT (normalny tok albo INTERVENE). PROTECT wymaga realnego WZORCA krzywdy lub wyraźnej przewagi/kontroli jednej strony. Metafory i hiperbole nie są dowodem krzywdy.
 - SAFETY_STOP — BEZPIECZEŃSTWO: JAKIKOLWIEK realny sygnał przemocy (także domowej, ze strony partnera lub wobec dzieci), samookaleczenia, myśli samobójczych albo zagrożenia życia/zdrowia — w DOWOLNYM języku, także parafrazą, eufemizmem czy aluzją (np. „nie chcę (już/dłużej) żyć", „lepiej żeby mnie nie było", „zrobię sobie krzywdę", „boję się, że mnie skrzywdzi", „uderzył mnie"). ABSOLUTNY priorytet — przy realnej wątpliwości wybierz SAFETY_STOP. ALE odróżniaj realny sygnał od PRZENOŚNI/hiperboli („zabija mnie ta cisza", „umieram z tęsknoty", „ta praca mnie wykańcza", „mógłbym go zabić za to spóźnienie") — sama metafora to NIE jest zagrożenie. shouldSpeak=true.
 
 ZAWSZE się odezwij (shouldSpeak=true, NIE WAIT), gdy para zwraca się WPROST do doradcy albo prosi o jego zdanie, ocenę, radę, pomoc lub reakcję (np. „doradco…", „co o tym myślisz?", „a Ty jak to widzisz?", „powiedz szczerze", „poradź nam", „masz rację?"). Wybierz wtedy najwłaściwszy typ mówiący (zwykle SUMMARIZE albo PROPOSE) — zignorowanie bezpośredniego pytania jest błędem.
 
 TEMPO I GŁĘBIA — nie spiesz się. Zanim oddasz głos drugiej stronie (ASK_OTHER) albo sparafrazujesz, POGŁĘB perspektywę osoby, która mówi (DEEPEN) — ale TYLKO dopóki to produktywne. Pogłębiaj, gdy jej odpowiedź wnosi NOWĄ treść lub emocję, a sedno wciąż nie zostało nazwane. PRZESTAŃ pogłębiać i ruszaj dalej (ASK_OTHER, gdy druga strona jeszcze nie mówiła; inaczej SUMMARIZE), gdy: osoba wygląda na naprawdę wysłuchaną lub nazwała sedno, ALBO jej odpowiedź się urywa (krótka, w kółko to samo, zamknięta, „nie wiem"), ALBO pogłębiałeś już z nią około dwóch razy. Liczba pogłębień NIE jest sztywna — dla płytkiego/praktycznego tematu może być zero, dla trudnego emocjonalnie jedno–dwa. Dopasuj do tego, ile osoba realnie wnosi. Do rozwiązań (PROPOSE) przechodź dopiero, gdy obie strony czują się zrozumiane.
 
-Zasady kolejności: SAFETY_STOP > INTERVENE > (bezpośrednia prośba o głos) > DEEPEN/ASK_OTHER (wg powyższego tempa) > reszta.
+Zasady kolejności: SAFETY_STOP > PROTECT > INTERVENE > (bezpośrednia prośba o głos) > DEEPEN/ASK_OTHER (wg powyższego tempa) > reszta. (Gdy jest wzorzec krzywdy, PROTECT bierze górę także nad bezpośrednim pytaniem „kto ma rację?".)
 "kind": "FULL" dla zwykłych dymek, "INTERVENTION" dla INTERVENE.
 "topic": ustaw/utrzymaj krótką kotwicę tematu. "nextSpeaker": HER/HIM/TOGETHER dla ASK_OTHER.
 "composerHint": KRÓTKA (do ~8 słów) podpowiedź wpisana w pole tekstowe dla osoby, która ma teraz pisać. ZAWSZE w 2. osobie, skierowana WPROST do tej osoby jak polecenie/pytanie do niej (np. „opowiedz o…", „co czujesz, gdy…", „zacznij od „czuję…"") — NIGDY w 3. osobie ani opisowo o niej („opisz moment, kiedy poczuła się…" = ŹLE; popraw na „kiedy poczułaś się…"). Ciepła, naprowadzająca na konstruktywny krok i DOPASOWANA do tematu rozmowy (nie ogólnik). DOBIERZ DRZWI WEJŚCIA wg PŁCI osoby, która ma teraz pisać (patrz mapa płci w stanie). Mężczyzna → DOMYŚLNIE otwórz przez zdarzenie/działanie („co się stało, gdy…", „co zrobiłeś, kiedy…", „co Ci wtedy chodziło po głowie?") i NIE używaj „co czujesz…", CHYBA że sam już pisze o sobie emocjami (np. „czuję się samotny", „przytłacza mnie"). Kobieta → wejście przez uczucie jest dobre („co czujesz, gdy…"). Płeć to domyślne drzwi, styl osoby to ewentualne nadpisanie. Oba rodzaje prowadzą do emocji; wejście przez zdarzenie nie każe zaczynać od nazwania uczucia na zimno. Przy ASK_OTHER skieruj ją do nextSpeaker. Gdy Twoja dymka już zadaje pytanie, niech composerHint będzie krótkim dopowiedzeniem formy. Różnicuj ją z tury na turę — nie powtarzaj tej samej.
@@ -211,7 +219,7 @@ const DECIDE_SCHEMA = {
   properties: {
     type: {
       type: 'string',
-      enum: ['WAIT', 'DEEPEN', 'ASK_OTHER', 'CLARIFY', 'REFRAME', 'NARROW', 'CHOOSE', 'PROPOSE', 'SUMMARIZE', 'INTERVENE', 'SAFETY_STOP'],
+      enum: ['WAIT', 'DEEPEN', 'ASK_OTHER', 'CLARIFY', 'REFRAME', 'NARROW', 'CHOOSE', 'PROPOSE', 'SUMMARIZE', 'INTERVENE', 'PROTECT', 'SAFETY_STOP'],
     },
     shouldSpeak: { type: 'boolean' },
     kind: { type: 'string', enum: ['FULL', 'MODERATION', 'INTERVENTION'] },
@@ -250,7 +258,13 @@ async function modelDecide(history, state, context) {
     output_config: { format: { type: 'json_schema', schema: DECIDE_SCHEMA } },
   });
 
-  const block = resp.content.find((b) => b.type === 'text');
+  // Utwardzenie: model bywa, że nie zwróci bloku `text` (np. stop_reason=refusal,
+  // pusta treść) → bez tego rzucało „Cannot read properties of undefined (reading 'text')"
+  // i cicho spadało na PL-regex. Rzucamy czytelny błąd → łapie go decide() → fallback reguł.
+  const block = (resp.content || []).find((b) => b.type === 'text');
+  if (!block || typeof block.text !== 'string') {
+    throw new Error(`decide: brak bloku text w odpowiedzi modelu (stop_reason=${resp.stop_reason})`);
+  }
   const d = JSON.parse(block.text);
   const u = resp.usage || {};
   d.usage = {
@@ -343,7 +357,8 @@ function finalizeDecision(d, history, state) {
 
   const tsp = state.turnsSinceProgress || 0;
   const streak = state.escalationStreak || 0;
-  if (out.type === 'SAFETY_STOP') {
+  if (out.type === 'SAFETY_STOP' || out.type === 'PROTECT') {
+    // tory ochronne przerywają tok mediacji → zerują rozpęd kłótni i licznik pętli
     out.turnsSinceProgress = 0;
     out.escalationStreak = 0;
   } else if (out.type === 'WAIT') {
@@ -436,5 +451,20 @@ module.exports = {
         usage,
       };
     }
+  },
+
+  // Czyste funkcje (bez sieci) wystawione do UNIT TESTÓW — nie są częścią kontraktu
+  // AdvisorService. Pozwalają testować warstwę strażników/adresata offline.
+  __testables: {
+    finalizeDecision,
+    replyAudience,
+    audienceSteer,
+    audienceBinding,
+    composerTarget,
+    deepenCountForCurrent,
+    hasNames,
+    speakerLabel,
+    nameSteer,
+    toMessages,
   },
 };
