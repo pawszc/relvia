@@ -51,3 +51,25 @@ Czyste funkcje są wystawione przez `module.exports.__testables` w `anthropicAdv
 (nie część kontraktu `AdvisorService`). Test ustawia atrapę `ANTHROPIC_API_KEY` przed
 `require` — konstruktor SDK waliduje tylko obecność klucza, **nie woła sieci**, więc
 testy są offline i bez kosztu.
+
+## 3. Integration handlera (`test/integration/`) — 0 tokenów
+
+```bash
+npm run test:int   # node --test, boot CAP (cds.test) + mock warstwy AI
+```
+
+Pełna orkiestracja `chat-service.js` (decide → persystencja → generateReply → sanitize →
+INSERT → liczniki/tokeny) z **mockiem** warstwy AI (deterministyczny, 0 tokenów). Wymusza
+`ADVISOR=mock` PRZED `require('@sap/cds')` (dotenv w `server.js` nie nadpisuje już ustawionych
+zmiennych → `couple-adviser.env` z `ADVISOR=anthropic` nie wygrywa). `cds.test` dla sqlite sam
+używa izolowanej bazy **in-memory** — dev-owa `db.sqlite` nietknięta.
+
+Pokrycie ([handler.test.js](integration/handler.test.js)): `startConversation`; zwykła tura
+(zapis pary + dymki z `kind`/`decisionType`); persystencja stanu (faza, kotwica); **tryb
+„tylko słucha" = zero wywołań modelu**; `conversationUsage` (0 tokenów); parking dygresji;
+**WAIT** (doradca milczy → brak dymki).
+
+> Kolejność zdarzeń **SSE na drucie** NIE jest tu testowana: `cds.test` w tym środowisku nie
+> wystawia osiągalnego po HTTP socketu w procesie (ECONNREFUSED nawet z własnego helpera).
+> To liniowa sekwencja `sse()` bez logiki warunkowej poza `shouldSpeak` (pokryte WAIT/zwykłą
+> turą); format drutu pozostaje pod kontraktem ([CONTRACT.md](../CONTRACT.md)) i ręcznym demem.

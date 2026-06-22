@@ -11,28 +11,12 @@ const cds = require('@sap/cds');
 const advisor = require('./advisor/advisor');
 const { costUsd } = require('./advisor/pricing');
 const { activeModel } = require('./advisor/models');
+const { sanitizeAdvisor } = require('./sanitize');
 
 /** Zapis pojedynczego zdarzenia SSE do surowej odpowiedzi HTTP. */
 function sse(res, event, data) {
   res.write(`event: ${event}\n`);
   res.write(`data: ${JSON.stringify(data)}\n\n`);
-}
-
-/**
- * "Markdown B" — twarde czyszczenie odpowiedzi doradcy z artefaktów, których UI
- * (czysty tekst) nie renderuje: znaczniki markdown i wiodące etykiety mówcy.
- * Gwarancja niezależna od tego, czy model posłuchał instrukcji w personie.
- */
-function sanitizeAdvisor(text) {
-  if (!text) return text;
-  return text
-    .replace(/\*\*([^*]+)\*\*/g, '$1') // **pogrubienie** → tekst
-    .replace(/\*([^*\n]+)\*/g, '$1') // *kursywa* → tekst
-    .replace(/\*/g, '') // osierocone gwiazdki
-    .replace(/^\s{0,3}#{1,6}\s+/gm, '') // nagłówki markdown
-    .replace(/^\s{0,3}>\s?/gm, '') // cytaty blokowe
-    .replace(/^\s*\[[^\]]+\]\s*:?\s*/, '') // wiodąca etykieta np. "[On]:"
-    .trim();
 }
 
 /** Ciepłe pożegnanie doradcy przy wejściu w pauzę (krok 4). Szablon — 0 tokenów. */
