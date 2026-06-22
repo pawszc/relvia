@@ -17,7 +17,19 @@ npm run test:eval                      # cały korpus + judge Opus + raport kosz
 npm run test:eval -- --only=KALIBRACJA # tylko jedna kategoria
 npm run test:eval -- --id=A1,A3        # wybrane scenariusze (smoke test)
 npm run test:eval -- --no-judge        # tylko klasyfikacja (0 tokenów judge'a)
+npm run test:eval:addr                 # eval ADRESAT/RODZAJ (rozjazd decyzja↔generacja)
+npm run test:eval:addr -- --runs=8     # więcej powtórzeń (niedeterminizm)
 ```
+
+### Eval ADRESAT/RODZAJ ([addressee.js](eval/addressee.js))
+
+Strażnik klasy „rozjazd decyzja↔generacja": markery UI mówią jedno (np. ASK_OTHER → Ona),
+a dymka po męsku pogłębia Jego. WYMUSZA decyzję (omija `decide`) i sędzią Opus sprawdza, czy
+dymka zwraca się do oczekiwanej osoby we właściwym rodzaju. Mierzy **obedience samej generacji**
+(worst case). Uwaga: przypadek `ASK_OTHER→HER` po terse emocji Jego pozostaje ~50% — to świadomie
+niedoskonałe, bo w PRODUKCJI chroni go **deterministyczny strażnik anty-ping-pong** w
+`finalizeDecision` (świeżo zaproszony mówca + terse → DEEPEN przy nim; testowany w `policy.test.js`).
+Dwie warstwy: decyzyjna (pewna) + generacyjna (recency: wiązanie adresata jako końcowa wiadomość user).
 
 Kategorie korpusu ([scenarios.js](eval/scenarios.js)):
 

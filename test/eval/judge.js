@@ -47,6 +47,20 @@ const VERDICT_SCHEMA = {
 
 const ROLE_LABEL = { HER: 'kobieta', HIM: 'mężczyzna', TOGETHER: 'oboje', ADVISOR: 'doradca' };
 
+/** Odporny parser werdyktu: zdejmij ``` fence, wytnij {…}; przy porażce → pusty (= fail), bez wysadzania biegu. */
+function parseVerdicts(text) {
+  let t = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+  const s = t.indexOf('{');
+  const e = t.lastIndexOf('}');
+  if (s >= 0 && e > s) t = t.slice(s, e + 1);
+  try {
+    return JSON.parse(t);
+  } catch {
+    console.warn('[judge] nieparsowalny JSON werdyktu (fragment):', String(text || '').slice(0, 200));
+    return { verdicts: [] };
+  }
+}
+
 function renderHistory(history) {
   return history
     .map((m) => `[${ROLE_LABEL[m.author] || m.author}]: ${m.text}`)
@@ -76,7 +90,7 @@ async function judge(history, reply, rubric) {
   });
 
   const block = resp.content.find((b) => b.type === 'text');
-  const parsed = JSON.parse(block.text);
+  const parsed = parseVerdicts(block && block.text);
   const u = resp.usage || {};
   return {
     verdicts: parsed.verdicts || [],

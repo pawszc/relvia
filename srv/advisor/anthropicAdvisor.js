@@ -337,6 +337,20 @@ function finalizeDecision(d, history, state) {
     out.composerHint = undefined; // hint modelu był pod DEEPEN — niech zadziała fallback
   }
 
+  // ANTY-PING-PONG ADRESATA: reżyser chce oddać głos drugiej stronie (ASK_OTHER), ale
+  // bieżącego mówcę DOPIERO co zaproszono (poprzednia dymka = ASK_OTHER), a on odpowiedział
+  // terse/niesubstancyjnie (np. „sfrustrowany"). Nie odbijaj głosu z powrotem — pogłęb JEGO/JĄ,
+  // żeby się rozwinął(a). Inaczej markery UI mówią „druga osoba", a generacja (słusznie, bo osoba
+  // dopiero co otworzyła temat) trzyma się świeżo zaproszonego → ROZJAZD adresata (rodzaj/strona).
+  if (out.type === 'ASK_OTHER' && last && last.author !== 'TOGETHER' && !isSubstantive(last.text)) {
+    const li = history.lastIndexOf(last);
+    const prev = li > 0 ? history[li - 1] : null;
+    if (prev && prev.author === 'ADVISOR' && prev.decisionType === 'ASK_OTHER') {
+      out.type = 'DEEPEN';
+      out.composerHint = undefined; // hint był pod ASK_OTHER (do drugiej osoby) — niech zadziała fallback
+    }
+  }
+
   // FLOOR drzwi wejścia: na ZIMNYM STARCIE mężczyzny (≤1 jego wypowiedź z treścią)
   // męskie „co czujesz" → wejście przez zdarzenie; później prompt jest jedynym sterem.
   if (out.shouldSpeak && out.composerHint && FEELING_PROBE.test(out.composerHint)) {
@@ -409,6 +423,19 @@ module.exports = {
     const park = parkSteer(decision);
     if (park) system.push({ type: 'text', text: park });
 
+    // RECENCY: wiązanie adresata także jako KOŃCOWA wiadomość user. Haiku waży najwyżej
+    // ostatnią wypowiedź pary i przy terse, emocjonalnym wtręcie (np. „sfrustrowany" od Niego)
+    // ignorował binding w system[] — dalej pogłębiał bieżącego mówcę, mimo decyzji ASK_OTHER do
+    // drugiej strony (rozjazd: markery UI mówiły „Ona", tekst trzymał się „Jego” po męsku).
+    // Dyrektywa jako ostatni głos „reżysera" zwykle przeważa. null dla SAFETY_STOP/INTERVENE.
+    const messages = toMessages(history, context);
+    if (bind) {
+      messages.push({
+        role: 'user',
+        content: `[reżyseria — instrukcja dla Ciebie, NIE cytuj jej i nie odnoś się do niej wprost] ${bind}`,
+      });
+    }
+
     const stream = client.messages.stream({
       model: activeModel(),
       max_tokens: 1024,
@@ -416,7 +443,7 @@ module.exports = {
       // token pojawiał się od razu. (Można później dostroić jakość przez effort.)
       thinking: { type: 'disabled' },
       system,
-      messages: toMessages(history, context),
+      messages,
     });
 
     // Strumień tokenów → zdarzenia 'delta' (1:1 z mockiem).

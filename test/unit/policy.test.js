@@ -59,6 +59,16 @@ test('audienceBinding: null dla torów ochronnych; wiązanie dla zwykłych', () 
   assert.match(bind, /ADRESAT TEJ TURY/);
 });
 
+test('audienceBinding: ASK_OTHER→HER wiąże w formy ŻEŃSKIE; DEEPEN po HIM w MĘSKIE', () => {
+  // strażnik klasy „rozjazd adresata": wiązanie MUSI nazwać właściwą osobę i rodzaj
+  reset();
+  const ask = audienceBinding({ type: 'ASK_OTHER', nextSpeaker: 'HER' }, [m('HIM', LONG)], {});
+  assert.match(ask, /ŻEŃSK|czułaś|powiedziałaś/, 'ASK_OTHER→HER = formy żeńskie do Ony');
+  reset();
+  const deep = audienceBinding({ type: 'DEEPEN' }, [m('HIM', LONG)], {});
+  assert.match(deep, /MĘSK|czułeś|powiedziałeś/, 'DEEPEN po HIM = formy męskie do Niego');
+});
+
 // ── finalizeDecision: PROTECT jak tor ochronny ──────────────────────────────
 test('finalizeDecision: PROTECT → kind FULL, zeruje liczniki, adresat TOGETHER', () => {
   reset();
@@ -98,6 +108,30 @@ test('finalizeDecision: niesubstantywna ostatnia tura → turnsSinceProgress+1',
   reset();
   const out = finalizeDecision({ type: 'CLARIFY', shouldSpeak: true }, [m('HER', 'nie')], { turnsSinceProgress: 1 });
   assert.equal(out.turnsSinceProgress, 2);
+});
+
+test('finalizeDecision: ANTY-PING-PONG — ASK_OTHER po świeżo zaproszonym + terse → DEEPEN (zostań przy nim)', () => {
+  reset();
+  // doradca zaprosił Jego (ASK_OTHER), On rzucił terse „sfrustrowany" → nie odbijaj do Niej
+  const hist = [
+    m('HER', LONG),
+    m('ADVISOR', 'A Ty jak to widzisz?', 'ASK_OTHER'),
+    m('HIM', 'sfrustrowany'),
+  ];
+  const out = finalizeDecision({ type: 'ASK_OTHER', shouldSpeak: true, nextSpeaker: 'HER' }, hist, {});
+  assert.equal(out.type, 'DEEPEN', 'odbicie głosu zamienione na pogłębienie');
+  assert.equal(out.nextSpeaker, 'HIM', 'zostajemy przy świeżo zaproszonym mówcy (On)');
+});
+
+test('finalizeDecision: ASK_OTHER NIE jest ruszany, gdy mówca odpowiedział treściwie', () => {
+  reset();
+  const hist = [
+    m('HER', LONG),
+    m('ADVISOR', 'A Ty jak to widzisz?', 'ASK_OTHER'),
+    m('HIM', 'Jestem sfrustrowany, bo mówię coś, a ona tego w ogóle nie słyszy i czuję się sam.'),
+  ];
+  const out = finalizeDecision({ type: 'ASK_OTHER', shouldSpeak: true, nextSpeaker: 'HER' }, hist, {});
+  assert.equal(out.type, 'ASK_OTHER', 'treściwa odpowiedź → ASK_OTHER zostaje');
 });
 
 test('finalizeDecision: bezpiecznik pętli DEEPEN (≥3) → ASK_OTHER do drugiej strony', () => {
