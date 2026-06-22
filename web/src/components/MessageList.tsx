@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
-import type { Author } from '@shared/chat-contract';
 import type { UiMessage } from '../hooks/useConversation';
-import MessageBubble, { type AdvisorSide } from './MessageBubble';
+import MessageBubble from './MessageBubble';
+import { advisorSide } from './advisorSide';
 
 /**
  * Przewijalna lista wiadomości w kanale „dwa brzegi": lewy brzeg = Ona (terakota),
@@ -20,30 +20,6 @@ interface Props {
   hisName: string;
   advisorTyping: boolean; // czy doradca aktualnie "pisze" (pokazuje kropki)
   onRetry: (clientId: string) => void;
-}
-
-const TO_BOTH = new Set(['SUMMARIZE', 'REFRAME', 'PROPOSE', 'CHOOSE', 'PROTECT']);
-const sideForAuthor = (a: Author): AdvisorSide => (a === 'HER' ? 'left' : a === 'HIM' ? 'right' : 'center');
-
-/** Do którego brzegu pochyla się dymka doradcy o indeksie `i` (wg adresata). */
-function advisorSide(messages: UiMessage[], i: number): AdvisorSide {
-  const m = messages[i];
-  // mała dymka (interwencja/moderacja) zawsze na środku — komunikat do obojga
-  if (m.kind === 'INTERVENTION' || m.kind === 'MODERATION') return 'center';
-  if (m.decisionType && TO_BOTH.has(m.decisionType)) return 'center';
-
-  // ostatnia wypowiedź pary przed tą dymką wyznacza „bieżącego mówcę"
-  let last: Author | null = null;
-  for (let j = i - 1; j >= 0; j--) {
-    if (messages[j].author !== 'ADVISOR') {
-      last = messages[j].author;
-      break;
-    }
-  }
-  if (!last || last === 'TOGETHER') return 'center';
-  // ASK_OTHER → oddaje głos drugiej stronie; reszta (DEEPEN/CLARIFY/…) → zostaje przy mówiącym
-  if (m.decisionType === 'ASK_OTHER') return last === 'HER' ? 'right' : 'left';
-  return sideForAuthor(last);
 }
 
 export default function MessageList({ messages, herName, hisName, advisorTyping, onRetry }: Props) {

@@ -125,8 +125,9 @@ function deepenCountForCurrent(history: ChatMessage[]): number {
   return count;
 }
 
-/** Decyzja reżysera — te same reguły co backend (decisionRules.js). */
-function decide(history: ChatMessage[], state: ConversationState): AdvisorDecision {
+/** Decyzja reżysera — te same reguły co backend (decisionRules.js).
+ *  Wyeksportowane do testu parzystości front↔back (decide-parity.test.ts). */
+export function decide(history: ChatMessage[], state: ConversationState): AdvisorDecision {
   const couple = history.filter((m) => m.author !== 'ADVISOR');
   const last = couple[couple.length - 1];
   const prev = couple[couple.length - 2];
