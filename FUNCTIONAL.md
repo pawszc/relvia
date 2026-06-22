@@ -1,4 +1,4 @@
-# Relvia — dokumentacja funkcjonalna
+# relvia — dokumentacja funkcjonalna
 
 Ten dokument opisuje **jak aplikacja się zachowuje** — co dzieje się po każdej wiadomości, dlaczego
 doradca raz mówi, a raz milczy, jak dostosowuje ton, jak chroni parę w kryzysie. Jest pisany
@@ -11,14 +11,14 @@ Pozostałe dokumenty (uzupełniające):
 - **[SAFETY.md](SAFETY.md)** — szczegółowa postawa bezpieczeństwa.
 - **[README.md](README.md)** — architektura i uruchomienie.
 
-> **Czym to NIE jest.** Relvia to **empatyczny mediator**, nie terapeuta, nie usługa kryzysowa
+> **Czym to NIE jest.** relvia to **empatyczny mediator**, nie terapeuta, nie usługa kryzysowa
 > i nie wyrób medyczny. W realnym zagrożeniu kieruje do profesjonalistów i służb — i mówi to wprost.
 
 ---
 
-## 1. W skrócie — czym jest Relvia
+## 1. W skrócie — czym jest relvia
 
-Relvia to czat, w którym **para rozmawia z empatycznym doradcą relacji z jednego urządzenia**.
+relvia to czat, w którym **para rozmawia z empatycznym doradcą relacji z jednego urządzenia**.
 Dwie osoby — domyślnie „Ona" i „On" (można ustawić własne imiona) — piszą naprzemiennie, podając przy
 każdej wiadomości, **kto pisze**: ona, on, albo „razem". Trzecim głosem jest **Doradca** (AI).
 

@@ -1,4 +1,4 @@
-# Relvia — Frontend (Faza 1)
+# relvia — Frontend (Faza 1)
 
 React + Vite + TypeScript. Wariant wizualny **A4**. Backend jest **zamockowany po stronie frontu** — zero sieci, zero tokenów.
 

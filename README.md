@@ -1,4 +1,4 @@
-# Relvia
+# relvia
 
 Czat, w którym **para rozmawia z empatycznym AI‑doradcą relacji z jednego urządzenia**.
 Ona / On piszą naprzemiennie (albo „Razem"), a doradca jest **reżyserem rozmowy** — zawsze ją

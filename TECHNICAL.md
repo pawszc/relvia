@@ -1,4 +1,4 @@
-# Relvia — specyfikacja techniczna
+# relvia — specyfikacja techniczna
 
 Ten dokument tłumaczy **jak aplikacja jest zbudowana i dlaczego** — z myślą o developerze na poziomie
 **junior/mid**. Pojęcia, które mogą być nowe (SSE, structured output, async generatory, prompt caching,

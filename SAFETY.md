@@ -1,4 +1,4 @@
-# Bezpieczeństwo — Relvia
+# Bezpieczeństwo — relvia
 
 Jak aplikacja reaguje na sygnały kryzysu (przemoc, samookaleczenie, myśli samobójcze, zagrożenie
 życia/zdrowia) i jakie **świadome kompromisy** przyjęliśmy. Dla współtwórców i jako zapis decyzji.
