@@ -1,0 +1,40 @@
+# fly.toml app configuration file generated for relvia on 2026-06-25T21:36:56+02:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'relvia'
+primary_region = 'fra'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[env]
+  ADVISOR = 'anthropic'
+  ADVISOR_GLOBAL_BUDGET_USD = '20'
+  ADVISOR_MODEL = 'claude-haiku-4-5'
+  NODE_ENV = 'production'
+
+[[mounts]]
+  source = 'relvia_data'
+  destination = '/data'
+
+[http_service]
+  internal_port = 4004
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '20s'
+    method = 'GET'
+    path = '/health'
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '512mb'
+  cpus = 1
+  memory_mb = 512

@@ -1,0 +1,24 @@
+# Nie kopiuj zależności/buildów/sekretów do kontekstu builda — instalujemy je w obrazie.
+node_modules
+web/node_modules
+web/dist
+gen
+dist
+
+# Baza i jej pliki towarzyszące (trwają na wolumenie, nie w obrazie)
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+
+# Sekrety (na Fly idą jako `fly secrets`, nie do obrazu)
+relvia.env
+.cdsrc-private.json
+
+# Pliki pomocnicze
+.git
+.gitignore
+**/*.test.js
+test
+doc
+README.md

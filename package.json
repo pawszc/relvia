@@ -31,8 +31,14 @@
           "url": "db.sqlite"
         },
         "[production]": {
-          "schema_evolution": "auto"
+          "schema_evolution": "auto",
+          "credentials": {
+            "url": "/data/db.sqlite"
+          }
         }
+      },
+      "[production]": {
+        "auth": "dummy"
       }
     }
   },
