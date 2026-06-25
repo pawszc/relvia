@@ -1,8 +1,8 @@
 # Silnik rozmowy (turn-taking engine) — relvia
 
 Dokumentacja koncepcyjna i behawioralna „reżysera rozmowy". Czytaj razem z:
-kontrakt protokołu → [`CONTRACT.md`](CONTRACT.md) · typy → [`shared/chat-contract.ts`](shared/chat-contract.ts) ·
-reguły → [`srv/advisor/decisionRules.js`](srv/advisor/decisionRules.js) · handler → [`srv/chat-service.js`](srv/chat-service.js).
+kontrakt protokołu → [`CONTRACT.md`](CONTRACT.md) · typy → [`shared/chat-contract.ts`](../shared/chat-contract.ts) ·
+reguły → [`srv/advisor/decisionRules.js`](../srv/advisor/decisionRules.js) · handler → [`srv/chat-service.js`](../srv/chat-service.js).
 
 > Status: **silnik gotowy** — kroki 1–6 + rework pauzy (przełącznik „Rozmawia / Tylko słucha"),
 > typ `DEEPEN` (pogłębianie) oraz „inteligentny kompozytor" (Faza 2). Zostały zadania po‑silnikowe:
@@ -52,7 +52,7 @@ Z tego wynikają reguły, które odróżniają produkt od zwykłego ChatGPT:
 
 ## 2. Architektura — dwa kroki na turę
 
-Po każdej wiadomości pary handler ([`srv/chat-service.js`](srv/chat-service.js)) wykonuje:
+Po każdej wiadomości pary handler ([`srv/chat-service.js`](../srv/chat-service.js)) wykonuje:
 
 ```
 wiadomość pary
@@ -79,8 +79,8 @@ Tury, w których Advisor milczy (`WAIT`), kosztują tylko `decide` zamiast pełn
 pełny kontekst co turę → koszt wejścia rośnie kwadratowo (kandydat do optymalizacji — patrz Roadmapa).
 
 Warstwa AI jest za interfejsem `AdvisorService` (`decide` + `generateReply`) — mock i Anthropic są wymienne,
-wybór przez `ADVISOR=mock|anthropic` ([`srv/advisor/advisor.js`](srv/advisor/advisor.js)). W trybie anthropic
-`decide` woła model (Haiku, structured output), a reguły ([`decisionRules.js`](srv/advisor/decisionRules.js))
+wybór przez `ADVISOR=mock|anthropic` ([`srv/advisor/advisor.js`](../srv/advisor/advisor.js)). W trybie anthropic
+`decide` woła model (Haiku, structured output), a reguły ([`decisionRules.js`](../srv/advisor/decisionRules.js))
 służą jako **fallback** (zły JSON / awaria / timeout) oraz w trybie mock.
 
 ---
@@ -117,7 +117,7 @@ symetrycznie — waliduje realność skrzywdzonej osoby, łagodnie nazywa wzorze
 Detekcja jest **model‑only** (semantyczna, wielojęzyczna); reguły fallbacku/mock celowo NIE wykrywają PROTECT
 (jak niuanse `SAFETY_STOP` — regex po polsku się nie skaluje). Kalibracja: model dostaje twardy strażnik przed
 fałszywym alarmem (zwykła kłótnia, obustronne obwinianie, metafory = NIE PROTECT) — zweryfikowany evalem
-(NADUZYCIE treść 2/10 → 9/10, **zero fałszywych pozytywów** w zestawie kalibracyjnym; patrz [`test/`](test/README.md)).
+(NADUZYCIE treść 2/10 → 9/10, **zero fałszywych pozytywów** w zestawie kalibracyjnym; patrz [`test/`](../test/README.md)).
 
 **`composerHint`** — krótka, kontekstowa podpowiedź do pola wpisywania dla następnej osoby (placeholder).
 Generuje ją model w `decide`; różnicowana z tury na turę (poprzednia trafia do promptu jako „nie powtarzaj").
@@ -127,7 +127,7 @@ Generuje ją model w `decide`; różnicowana z tury na turę (poprzednia trafia 
 To samo **pełne ciepło** dla obojga — różni się **droga dojścia do emocji**, nie jej natężenie. Płeć (przez rolę
 `HER`/`HIM`) jest **miękkim priorem**; styl osoby może go nadpisać. Bezpieczeństwo i de‑eskalacja **symetryczne**.
 
-**Rejestr dymki** (`generateReply`, [`anthropicAdvisor.js`](srv/advisor/anthropicAdvisor.js)) — krótki blok
+**Rejestr dymki** (`generateReply`, [`anthropicAdvisor.js`](../srv/advisor/anthropicAdvisor.js)) — krótki blok
 `REGISTER` doklejany do `system[]` wg adresata (`replyAudience`: typy do obojga → `TOGETHER`; `ASK_OTHER` →
 `nextSpeaker`; reszta → bieżący mówca):
 - **HER** — obecny, sprawdzony rejestr: nazwij uczucie wprost, zaproś do głębszego nazwania potrzeby.
@@ -144,7 +144,7 @@ To samo **pełne ciepło** dla obojga — różni się **droga dojścia do emocj
   podmiana na `EVENT_DOOR_BANK`. Po ≥2 jego turach floor milczy — steruje sam prompt.
 
 > **Uwaga (wielojęzyczność).** Stałe floora (`FEELING_PROBE`, `EVENT_DOOR_BANK`) żyją w
-> [`decisionRules.js`](srv/advisor/decisionRules.js), ale — w odróżnieniu od reszty reguł — **wykonują się
+> [`decisionRules.js`](../srv/advisor/decisionRules.js), ale — w odróżnieniu od reszty reguł — **wykonują się
 > na żywym torze modelu**, nie tylko w fallbacku. Są **PL‑only**: poza polskim trigger nie trafia → floor to
 > cichy no‑op (prompt niesie całość), bez wstrzykiwania polskiego tekstu do obcej rozmowy. Wielojęzyczny
 > upgrade (opcja C): trigger → etykieta drzwi od modelu (`composerHintDoor`), bank → hint modelu w danym języku.
@@ -157,7 +157,7 @@ To samo **pełne ciepło** dla obojga — różni się **droga dojścia do emocj
 > podejmuje MODEL — semantycznie i wielojęzycznie. Reguły działają jako fallback na awarię modelu i jako mock
 > offline. Wzorce są **PL‑only** i celowo proste — świadomie nie skalujemy regexu pod inne języki.
 
-Kolejność w [`decide()`](srv/advisor/decisionRules.js) (pierwszy pasujący warunek wygrywa):
+Kolejność w [`decide()`](../srv/advisor/decisionRules.js) (pierwszy pasujący warunek wygrywa):
 
 1. **Brak wypowiedzi pary** → `WAIT`.
 2. **Kryzys** (regex `CRISIS`, PL) → `SAFETY_STOP`. Zawsze pierwszy. (W produkcji robi to model; tu tylko fallback.)
@@ -193,7 +193,7 @@ Panel „Do omówienia później": **wróćmy teraz** (`PROMOTE` — ustawia kot
 
 ## 5. Stan reżysera (persystencja)
 
-Na encji `Conversations` ([`db/schema.cds`](db/schema.cds)):
+Na encji `Conversations` ([`db/schema.cds`](../db/schema.cds)):
 
 | Pole | Znaczenie |
 |---|---|
@@ -212,7 +212,7 @@ Na `Messages` (dymki ADVISOR): `kind` + `decisionType` + tokeny generacji.
 
 `decide` zwraca nowe wartości stanu, które handler zapisuje. `ConversationState` odtwarza UI po odświeżeniu
 (akcja `conversationState`). Koszt: funkcja `conversationUsage` rozbija tokeny generacja vs decyzja + `costUsd`
-(cennik per model w [`srv/advisor/pricing.js`](srv/advisor/pricing.js) / [`models.js`](srv/advisor/models.js)).
+(cennik per model w [`srv/advisor/pricing.js`](../srv/advisor/pricing.js) / [`models.js`](../srv/advisor/models.js)).
 
 ---
 
@@ -233,8 +233,8 @@ message.user → advisor.decision → [phase.change?] → [parked.update?] →
 
 **Status sceniczny** w UI (nie spinner — obecność reżysera):
 `idle` · `listening` (analizuje) · `typing` (pisze) · `waiting` (świadomie czeka, np. „Doradca czeka na
-odpowiedź: {imię}"). Mapowanie: [`web/src/hooks/useConversation.ts`](web/src/hooks/useConversation.ts);
-render: [`web/src/components/ChatScreen.tsx`](web/src/components/ChatScreen.tsx).
+odpowiedź: {imię}"). Mapowanie: [`web/src/hooks/useConversation.ts`](../web/src/hooks/useConversation.ts);
+render: [`web/src/components/ChatScreen.tsx`](../web/src/components/ChatScreen.tsx).
 
 ### „Inteligentny kompozytor" (Faza 2)
 
@@ -249,16 +249,16 @@ Pole wpisywania odzwierciedla kierunek doradcy — zawsze nadpisywalne, zmiana t
 
 | Warstwa | Plik | Rola |
 |---|---|---|
-| Kontrakt | [`shared/chat-contract.ts`](shared/chat-contract.ts) | typy decyzji, stanu, zdarzeń — jedno źródło prawdy |
-| Reguły | [`srv/advisor/decisionRules.js`](srv/advisor/decisionRules.js) | `decide()` regułowy — **fallback + mock** (PL) |
-| AI mock | [`srv/advisor/mockAdvisor.js`](srv/advisor/mockAdvisor.js) | `decide` + `generateReply` (0 tokenów) |
-| AI real | [`srv/advisor/anthropicAdvisor.js`](srv/advisor/anthropicAdvisor.js) | `decide` (Haiku, structured output) + `generateReply` (Haiku) sterowany decyzją |
-| Modele/cennik | [`srv/advisor/models.js`](srv/advisor/models.js) · [`pricing.js`](srv/advisor/pricing.js) | tabela modeli→stawki, `activeModel()`, `costUsd()` |
-| Handler | [`srv/chat-service.js`](srv/chat-service.js) | orkiestracja, pauza, persystencja, SSE, `sanitizeAdvisor` |
-| Model danych | [`db/schema.cds`](db/schema.cds) | stan reżysera + `ParkedTopics` + tokeny |
-| Hook | [`web/src/hooks/useConversation.ts`](web/src/hooks/useConversation.ts) | stan UI: status, faza, parking, `lastDecision`, tryb |
-| Ekran + kompozytor | [`web/src/components/ChatScreen.tsx`](web/src/components/ChatScreen.tsx) · [`Composer.tsx`](web/src/components/Composer.tsx) | przełącznik trybu, placeholdery, auto‑autor |
-| Klient offline | [`web/src/client/mockChatClient.ts`](web/src/client/mockChatClient.ts) | lustro reguł dla `VITE_USE_MOCK=true` |
+| Kontrakt | [`shared/chat-contract.ts`](../shared/chat-contract.ts) | typy decyzji, stanu, zdarzeń — jedno źródło prawdy |
+| Reguły | [`srv/advisor/decisionRules.js`](../srv/advisor/decisionRules.js) | `decide()` regułowy — **fallback + mock** (PL) |
+| AI mock | [`srv/advisor/mockAdvisor.js`](../srv/advisor/mockAdvisor.js) | `decide` + `generateReply` (0 tokenów) |
+| AI real | [`srv/advisor/anthropicAdvisor.js`](../srv/advisor/anthropicAdvisor.js) | `decide` (Haiku, structured output) + `generateReply` (Haiku) sterowany decyzją |
+| Modele/cennik | [`srv/advisor/models.js`](../srv/advisor/models.js) · [`pricing.js`](../srv/advisor/pricing.js) | tabela modeli→stawki, `activeModel()`, `costUsd()` |
+| Handler | [`srv/chat-service.js`](../srv/chat-service.js) | orkiestracja, pauza, persystencja, SSE, `sanitizeAdvisor` |
+| Model danych | [`db/schema.cds`](../db/schema.cds) | stan reżysera + `ParkedTopics` + tokeny |
+| Hook | [`web/src/hooks/useConversation.ts`](../web/src/hooks/useConversation.ts) | stan UI: status, faza, parking, `lastDecision`, tryb |
+| Ekran + kompozytor | [`web/src/components/ChatScreen.tsx`](../web/src/components/ChatScreen.tsx) · [`Composer.tsx`](../web/src/components/Composer.tsx) | przełącznik trybu, placeholdery, auto‑autor |
+| Klient offline | [`web/src/client/mockChatClient.ts`](../web/src/client/mockChatClient.ts) | lustro reguł dla `VITE_USE_MOCK=true` |
 
 > **Uwaga o duplikacji.** Reguły żyją w `decisionRules.js` (backend, CJS) i są **lustrzanie** powtórzone
 > w `mockChatClient.ts` (front, TS) na potrzeby trybu offline — backend Node nie importuje TS, a front nie
@@ -282,7 +282,14 @@ Pole wpisywania odzwierciedla kierunek doradcy — zawsze nadpisywalne, zmiana t
 
 **Zadania po‑silnikowe:**
 - Przegląd regexów pod wielojęzyczność — **zrobione** (regexy kryzysu/eskalacji/dygresji są świadomie PL‑only jako fallback/mock; model = warstwa wielojęzyczna). **Wyjątek:** stałe floora drzwi (`FEELING_PROBE`/`EVENT_DOOR_BANK`) to PL‑only na ŻYWYM torze modelu — poza PL cichy no‑op; wielojęzyczny upgrade = opcja C (patrz §3). Patrz nagłówek `decisionRules.js`.
-- **Optymalizacja kosztu `decide`** (rośnie kwadratowo) — TODO: cache prefiksu / krótszy kontekst dla decide.
-- Krok ku publikacji: rate limiting / ochrona publicznego endpointu, wdrożenie (CAP serwuje build SPA).
+- **Optymalizacja kosztu `decide`** (rośnie kwadratowo) — **zrobione (prompt caching)**: breakpoint cache na
+  prefiksie historii w `modelDecide` (`withCacheBreakpoint`), TTL z `CONFIG.cacheTtl` (domyślnie 5 min).
+  Bezstratne — pełen kontekst, tańszy znany prefiks. Rusza od ~4096 tok (min. Haiku). Krótszy kontekst dla
+  decide pozostaje opcją na później (stratną — odłożone).
+- **Ochrona dostępu/kosztu** — **zrobione**: budżet konwersacji ($0,50, łagodny read-only), rate limit
+  (per konwersacja), granica roli/anti-injection w `DECIDE_SYSTEM`/`PERSONA`. Jeden punkt prawdy:
+  [`config.js`](../srv/advisor/config.js). Szczegóły → [SAFETY.md](SAFETY.md). Rate limit jest in-memory
+  (single instance) — przy skalowaniu do współdzielonego magazynu.
+- Krok ku publikacji: wdrożenie (CAP serwuje build SPA).
 
 Pełny plan implementacji: `~/.claude/plans/snug-launching-castle.md`.

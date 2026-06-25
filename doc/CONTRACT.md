@@ -1,7 +1,7 @@
 # Kontrakt usługi CAP — relvia
 
 Jedno źródło prawdy dla frontu (mock i realny), backendu CAP i integracji AI.
-Typy: [`shared/chat-contract.ts`](shared/chat-contract.ts) · Model: [`db/schema.cds`](db/schema.cds) · Usługa: [`srv/chat-service.cds`](srv/chat-service.cds)
+Typy: [`shared/chat-contract.ts`](../shared/chat-contract.ts) · Model: [`db/schema.cds`](../db/schema.cds) · Usługa: [`srv/chat-service.cds`](../srv/chat-service.cds)
 
 Wariant wizualny: **A4** (ekspresyjny, wiadomość „razem" jako hero na osi).
 
@@ -13,10 +13,15 @@ Wariant wizualny: **A4** (ekspresyjny, wiadomość „razem" jako hero na osi).
 
 ## 1. Zakres i granice
 
-- Powierzchnia **read-only OData** dla historii (`Conversations`, `Messages`, `ParkedTopics`).
-- **Akcje**: `startConversation`, `sendMessage`, `conversationState`, `resolveParkedTopic`, `setAdvisorMode`; **funkcja** `conversationUsage`.
+- **Brak publicznego OData** (bezpieczeństwo): ChatService NIE wystawia już encji. Wcześniej `@readonly` projekcje
+  pozwalały każdemu pobrać `GET /chat/Messages` = prywatne rozmowy WSZYSTKICH par. Dostęp wyłącznie przez akcje.
+- **Akcje**: `startConversation`, `sendMessage`, **`getHistory`**, `conversationState`, `resolveParkedTopic`, `setAdvisorMode`; **funkcja** `conversationUsage`.
+- **Capability token:** każda akcja konwersacji wymaga **`accessToken`** (sekret zwracany przez `startConversation`)
+  → bez/zły = `403`; ten sam 403 dla nieistniejącej konwersacji (brak enumeracji). Szczegóły: [`SAFETY.md`](SAFETY.md).
+- Pełny, zaufany wgląd w bazę (OData read-only) jest w osobnym **`AdminService` (`/admin`)** za nagłówkiem
+  `Authorization: Bearer <ADMIN_API_KEY>` (bez klucza → `503`). To NIE jest publiczny ChatService.
 - `sendMessage` zwraca **strumień SSE** (`text/event-stream`), nie JSON OData.
-- Warstwa AI jest ukryta za interfejsem `AdvisorService` (`decide` + `generateReply`). **Domyślnie MOCK — zero tokenów** (`ADVISOR=mock`). Realny Anthropic (`ADVISOR=anthropic`): **oba kroki na `claude-haiku-4-5`** (`ADVISOR_MODEL`) — `decide` przez structured output (odpala się co turę), generacja streamingiem (tylko gdy `shouldSpeak`); reguły służą jako fallback. Model wymienny przez `ADVISOR_MODEL`, wycena auto wg modelu ([`srv/advisor/models.js`](srv/advisor/models.js)).
+- Warstwa AI jest ukryta za interfejsem `AdvisorService` (`decide` + `generateReply`). **Domyślnie MOCK — zero tokenów** (`ADVISOR=mock`). Realny Anthropic (`ADVISOR=anthropic`): **oba kroki na `claude-haiku-4-5`** (`ADVISOR_MODEL`) — `decide` przez structured output (odpala się co turę), generacja streamingiem (tylko gdy `shouldSpeak`); reguły służą jako fallback. Model wymienny przez `ADVISOR_MODEL`, wycena auto wg modelu ([`srv/advisor/models.js`](../srv/advisor/models.js)).
 
 ---
 
@@ -24,9 +29,10 @@ Wariant wizualny: **A4** (ekspresyjny, wiadomość „razem" jako hero na osi).
 
 | Encja | Pola kluczowe |
 |---|---|
-| `Conversations` | `ID`, `title`, `herName` (dom. `Ona`), `hisName` (dom. `On`), `createdAt` + **stan reżysera**: `phase`, `topic`, `advisorMode`, `turnsSinceProgress`, `escalationStreak`, `lastActivityAt`, `model`, `lastComposerHint`, `decide*Tokens` (tokeny warstwy decyzji, narastają co turę) |
+| `Conversations` | `ID`, `title`, `herName` (dom. `Ona`), `hisName` (dom. `On`), **`accessToken`** (sekret dostępu), **`budgetReached`** (read-only po budżecie), `createdAt` + **stan reżysera**: `phase`, `topic`, `advisorMode`, `turnsSinceProgress`, `escalationStreak`, `lastActivityAt`, `model`, `lastComposerHint`, `decide*Tokens` (tokeny warstwy decyzji, narastają co turę) |
 | `Messages` | `ID`, `conversation`, `seq` (Integer), `author`, `text`, `createdAt` + dla dymek ADVISOR: `kind`, `decisionType`, tokeny generacji (`inputTokens`/`outputTokens`/…) |
 | `ParkedTopics` | `ID`, `conversation`, `text`, `status` (`OPEN`/`RESOLVED`/`DISMISSED`), `parkedAtSeq` — lista „do omówienia później" |
+| `UsageEvents` | `ID`, `conversation`, `layer` (`decide`/`generate`), `model`, tokeny, `createdAt` — ledger zużycia per tura (zasila globalny limit 24h). **Wewnętrzna, nie w ChatService**; widoczna tylko w `AdminService`. |
 
 `author ∈ { HER, HIM, TOGETHER, ADVISOR }`. Para pisze jako `HER`/`HIM`/`TOGETHER`; `ADVISOR` rezerwowany dla AI. `seq` rośnie monotonicznie w obrębie konwersacji i jest jedyną podstawą sortowania.
 
@@ -34,16 +40,16 @@ Znaczenie pól stanu reżysera (`phase`, `topic`, `turnsSinceProgress` …) i pa
 
 ---
 
-## 3. Powierzchnia OData (read-only)
+## 3. Historia — akcja `getHistory` (zamiast OData)
+
+ChatService nie wystawia encji przez OData. Historię jednej konwersacji pobiera **chroniona akcja** (wymaga `accessToken`):
 
 ```
-GET  /chat/Conversations
-GET  /chat/Conversations({id})?$expand=messages($orderby=seq)
-GET  /chat/Messages?$filter=conversation_ID eq {id}&$orderby=seq
-GET  /chat/ParkedTopics?$filter=conversation_ID eq {id}&$orderby=parkedAtSeq
+POST /chat/getHistory   { "conversationId": "9f1c…", "accessToken": "…" }
+→ [ { id, conversationId, seq, author, text, createdAt, kind?, decisionType? }, … ]   // posortowane po seq
 ```
 
-Klient frontowy używa tego do `getHistory()` (np. po odświeżeniu strony). Stan reżysera odtwarza akcja `conversationState` (sekcja 6a).
+Klient frontowy używa tego jako `getHistory()` (np. przy powrocie z „tylko słucha"). Stan reżysera odtwarza akcja `conversationState` (sekcja 6a). Pełny wgląd w bazę → `AdminService` (`/admin`, §9).
 
 ---
 
@@ -56,11 +62,13 @@ Content-Type: application/json
 { "title": "Niedziele" }
 ```
 
-Odpowiedź (JSON OData) — zawiera też imiona pary (z encji `Conversations`):
+Odpowiedź (JSON OData) — imiona pary **oraz `accessToken`** (sekret, który klient MUSI dołączać do każdej kolejnej akcji tej konwersacji):
 
 ```json
-{ "conversationId": "9f1c…", "herName": "Ona", "hisName": "On" }
+{ "conversationId": "9f1c…", "herName": "Ona", "hisName": "On", "accessToken": "a1b2…" }
 ```
+
+Tworzenie rozmów jest dławione per IP (odstęp + twardy limit godzinowy) → `429` przy spamie (patrz [`SAFETY.md`](SAFETY.md)).
 
 ---
 
@@ -76,11 +84,13 @@ Accept: text/event-stream
 {
   "conversationId": "9f1c…",
   "author": "HER",
-  "text": "Czuję, że ogarnianie domu wisi tylko na mnie. Jestem zmęczona."
+  "text": "Czuję, że ogarnianie domu wisi tylko na mnie. Jestem zmęczona.",
+  "accessToken": "a1b2…"
 }
 ```
 
-`author` nie może być `ADVISOR` → `400` (`code: "INVALID_AUTHOR"`).
+Odrzucenia: `author = ADVISOR` → `400` (`INVALID_AUTHOR`); pusty tekst → `400` (`EMPTY_TEXT`); tekst > `maxMessageChars`
+(4000) → `413` (`MESSAGE_TOO_LONG`); zły/brak `accessToken` → `403` (`FORBIDDEN`); zbyt szybko → `429` (`RATE_LIMIT`).
 
 ### Odpowiedź — protokół zdarzeń
 
@@ -139,12 +149,12 @@ data: {"text":"Słyszę dwie potrzeby naraz: być widzianą i być docenianym.",
 
 ## 6a. Akcje stanu i parkingu
 
-Obie wywoływane jako `POST` z ciałem JSON (jak `startConversation`).
+Obie wywoływane jako `POST` z ciałem JSON (jak `startConversation`). **Każda wymaga `accessToken`** → `403` bez niego.
 
 **`conversationState`** — odtworzenie stanu reżysera dla UI (po odświeżeniu):
 
 ```
-POST /chat/conversationState   { "conversationId": "9f1c…" }
+POST /chat/conversationState   { "conversationId": "9f1c…", "accessToken": "…" }
 → { "phase": "PARAPHRASE", "topic": "…", "advisorMode": "LEADING",
     "parkedTopics": [ { "id", "text", "status", "parkedAtSeq" } ] }
 ```
@@ -152,7 +162,7 @@ POST /chat/conversationState   { "conversationId": "9f1c…" }
 **`resolveParkedTopic`** — zmiana stanu zaparkowanego tematu z panelu „do omówienia później":
 
 ```
-POST /chat/resolveParkedTopic  { "conversationId", "topicId", "action" }
+POST /chat/resolveParkedTopic  { "conversationId", "topicId", "action", "accessToken" }
 → { "ok": true }
 ```
 
@@ -162,7 +172,7 @@ temat i zamyka go (`RESOLVED`). `RESOLVED`/`DISMISSED` tylko oznaczają status.
 **`setAdvisorMode`** — przełącznik trybu doradcy („Rozmawia" = `LEADING` / „Tylko słucha" = `PAUSED`):
 
 ```
-POST /chat/setAdvisorMode   { "conversationId", "mode" }   // mode ∈ { LEADING, PAUSED }
+POST /chat/setAdvisorMode   { "conversationId", "mode", "accessToken" }   // mode ∈ { LEADING, PAUSED }
 → { "ok": true }
 ```
 
@@ -171,7 +181,7 @@ Wejście w `PAUSED` dopisuje **szablonowe pożegnanie doradcy** (dymka ADVISOR, 
 **`conversationUsage`** (funkcja OData) — rozbicie zużycia tokenów i kosztu (generacja vs decyzja):
 
 ```
-GET /chat/conversationUsage(conversationId='9f1c…')
+GET /chat/conversationUsage(conversationId='9f1c…',accessToken='…')
 → { inputTokens, outputTokens, messages,
     decideInputTokens, decideOutputTokens,
     model, generationCostUsd, decideCostUsd, costUsd }
@@ -200,7 +210,7 @@ UI dociąga treść przez `getHistory()`. Streaming jest ścieżką domyślną; 
 
 ## 8. Mapowanie na Anthropic
 
-Kształt SSE celowo odzwierciedla `messages.stream()` Anthropic, więc realna implementacja `AdvisorService` (`generateReply`) to cienki adapter (zaimplementowany w [`srv/advisor/anthropicAdvisor.js`](srv/advisor/anthropicAdvisor.js)):
+Kształt SSE celowo odzwierciedla `messages.stream()` Anthropic, więc realna implementacja `AdvisorService` (`generateReply`) to cienki adapter (zaimplementowany w [`srv/advisor/anthropicAdvisor.js`](../srv/advisor/anthropicAdvisor.js)):
 
 | Anthropic | `AdvisorService` → SSE |
 |---|---|
@@ -210,4 +220,18 @@ Kształt SSE celowo odzwierciedla `messages.stream()` Anthropic, więc realna im
 
 Mapowanie autora na wejście modelu: wiadomości pary → rola `user` z prefiksem mówcy, wiadomości doradcy → rola `assistant`. Prefiks to wewnętrzna wskazówka „kto pisze": przy domyślnych imionach (Ona/On) role‑etykiety `[kobieta]` / `[mężczyzna]` / `[razem]`, przy własnych imionach — imiona; doradca nigdy nie powtarza etykiet w odpowiedzi (`sanitizeAdvisor` dodatkowo czyści markdown i wiodące etykiety). Persona doradcy (ciepły, empatyczny, neutralny mediator) w `system` z `cache_control`, uzupełniana warstwami: `nameSteer` (jak zwracać się do pary) + `audienceSteer` (rejestr empatii wg płci adresata — szczegóły w [`ENGINE.md`](ENGINE.md)) + krótka instrukcja sterująca wg typu decyzji (`DECISION_STEER`). **Model: `claude-haiku-4-5`** (`ADVISOR_MODEL`) — dla generacji ORAZ dla `decide` (structured output, `output_config.format` json_schema).
 
-**Domyślnie `ADVISOR=mock` — zero wywołań do API.** Realny model włącza `ADVISOR=anthropic` (wymaga `ANTHROPIC_API_KEY`). Decyzja i generacja na tym samym modelu; reguły ([`decisionRules.js`](srv/advisor/decisionRules.js)) służą jako fallback. Szczegóły silnika i bezpieczeństwa: [`ENGINE.md`](ENGINE.md).
+**Domyślnie `ADVISOR=mock` — zero wywołań do API.** Realny model włącza `ADVISOR=anthropic` (wymaga `ANTHROPIC_API_KEY`). Decyzja i generacja na tym samym modelu; reguły ([`decisionRules.js`](../srv/advisor/decisionRules.js)) służą jako fallback. Szczegóły silnika i bezpieczeństwa: [`ENGINE.md`](ENGINE.md).
+
+---
+
+## 9. `AdminService` (`/admin`) — zaufany wgląd w bazę
+
+Osobny serwis: **pełny OData read-only** wszystkich encji (`Conversations`, `Messages`, `ParkedTopics`, `UsageEvents`) do wygodnego dostępu z innej aplikacji/narzędzia (curl, Excel, panel). NIE jest częścią publicznego ChatService.
+
+```
+GET /admin/Messages?$orderby=createdAt desc&$top=50
+Authorization: Bearer <ADMIN_API_KEY>
+```
+
+Bramka [`srv/admin-auth.js`](../srv/admin-auth.js) (wpięta w [`server.js`](../srv/server.js) przez `cds bootstrap`):
+`Bearer` zgodny z `ADMIN_API_KEY` → `200`; brak/zły → `401`; **brak ustawionego klucza → `503`** (admin wyłączony, bezpieczny default). Pełny model dostępu i decyzje: [`SAFETY.md`](SAFETY.md).

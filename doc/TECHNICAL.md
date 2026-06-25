@@ -403,10 +403,18 @@ Trzyma je plik **`relvia.env`** (gitignored; szablon `relvia.env.example`):
 ADVISOR=anthropic            # mock | anthropic   (mock = 0 tokenów)
 ADVISOR_MODEL=claude-haiku-4-5
 ANTHROPIC_API_KEY=sk-ant-... # wymagany tylko gdy ADVISOR=anthropic
+ADMIN_API_KEY=...            # włącza /admin (bez niego /admin = 503); długi losowy sekret
 ```
 
 🧠 *Jak ładuje się env.* `srv/server.js` wczytuje ten plik przez `dotenv` (ścieżką bezwzględną)
 **zanim** załadują się usługi CAP — bo CAP sam tego nie robi, a klient Anthropic czyta klucz przy starcie.
+`server.js` wpina też przez `cds bootstrap`: `/health` oraz bramkę `/admin` ([`srv/admin-auth.js`](../srv/admin-auth.js)).
+
+🧠 *Jedno miejsce na progi.* **Wszystkie limity operacyjne są w [`srv/advisor/config.js`](../srv/advisor/config.js)** —
+budżety (per-sesja $0,50 / globalny $20-24h), prompt-caching TTL, rate-limity (wiadomości / nowych rozmów + limit
+godzinowy), cap długości wiadomości, timeout Anthropic, token caps `decide`/`reply`, `accessControlEnabled`,
+`adminApiKey`. Każde nadpisywalne env (`ADVISOR_*`). Model i cennik zostają w `models.js` (config.model deleguje).
+Pełna ściągawka produkcyjnego env → [`PRODUCTION.md`](PRODUCTION.md).
 
 ### Dev (dwa procesy)
 
@@ -430,7 +438,8 @@ Tryb front-only: `VITE_USE_MOCK=true` → UI działa bez backendu (mock streamin
 
 | Pułapka / decyzja | Co trzeba wiedzieć |
 |---|---|
-| **`cds deploy` czyści dane** | Każda zmiana `schema.cds` (nawet pola) wymaga deploy → regeneruje widoki projekcji i **kasuje** dane dev. Zmiana samego *komentarza* w `.cds` — nie. |
+| **`cds deploy` czyści dane (dev)** | W dev deploy = DROP+CREATE → **kasuje** dane. Na **produkcji** profil `[production]` ma `schema_evolution: auto` (w `package.json`) → zmiany ADDYTYWNE (nowe pola/encje) idą przez ALTER **bez utraty danych**; przed deployem `cds deploy --dry --profile production` (czy nie ma `DROP`). Szczegóły → [`PRODUCTION.md`](PRODUCTION.md). |
+| **Dostęp = capability token** | ChatService nie wystawia OData; każda akcja konwersacji wymaga `accessToken` (`assertAccess` → 403). Pełny wgląd w bazę tylko przez `AdminService` (/admin) za bearer-tokenem. Szczegóły → [`SAFETY.md`](SAFETY.md). |
 | **`decide` co turę** | Odpala się ZAWSZE (też przy `WAIT`) → koszt wejścia rośnie kwadratowo. Świadome; optymalizacja odłożona. |
 | **Reguły = tylko PL + tylko fallback/mock** | Nie rozbudowuj regexów pod inne języki — od wielojęzyczności jest model. Wyjątek: floor drzwi (PL, ale na żywym torze). |
 | **Duplikacja reguł** | `decisionRules.js` ↔ `mockChatClient.ts` — zmieniaj OBA. |
@@ -445,10 +454,14 @@ Tryb front-only: `VITE_USE_MOCK=true` → UI działa bez backendu (mock streamin
 | Plik | Rola |
 |---|---|
 | `shared/chat-contract.ts` | **jedno źródło prawdy** typów (decyzje, stan, zdarzenia, interfejsy) |
-| `db/schema.cds` | model danych (stan reżysera, `ParkedTopics`, `Messages`) |
-| `srv/chat-service.cds` | deklaracja usługi (encje read-only + akcje + funkcja) |
-| `srv/chat-service.js` | **handler**: orkiestracja tury, SSE („Plan A"), persystencja, sanityzacja, koszty |
-| `srv/server.js` | bootstrap — ładuje `relvia.env` |
+| `db/schema.cds` | model danych (stan reżysera, `accessToken`, `budgetReached`, `ParkedTopics`, `Messages`, `UsageEvents`) |
+| `srv/chat-service.cds` | deklaracja usługi — **same akcje + funkcja** (BEZ encji OData; `getHistory`, `accessToken`) |
+| `srv/admin-service.cds` | `AdminService` (/admin) — pełny OData read-only bazy (za bramką) |
+| `srv/chat-service.js` | **handler**: orkiestracja tury, SSE („Plan A"), persystencja, sanityzacja, koszty, `assertAccess`, dławiki, abort |
+| `srv/server.js` | bootstrap — ładuje `relvia.env` + wpina `/health` i bramkę `/admin` |
+| `srv/admin-auth.js` | bramka `/admin` (`checkAdminAuth` 503/401/200, `timingSafeEqual`) |
+| `srv/rate-limit.js` | czysta logika dławika nowych rozmów (odstęp + limit godzinowy) |
+| `srv/advisor/config.js` | **jedno miejsce** na progi/flagi (budżety, rate-limity, caps, timeout, dostęp, admin) |
 | `srv/advisor/advisor.js` | wybór implementacji AI wg `ADVISOR` (leniwy require) |
 | `srv/advisor/anthropicAdvisor.js` | realny model: `decide` (structured output) + `generateReply` (streaming) + rejestr + floor |
 | `srv/advisor/mockAdvisor.js` | mock generacji (kanned, 0 tokenów) |
