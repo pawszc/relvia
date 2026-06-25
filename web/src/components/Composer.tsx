@@ -1,5 +1,9 @@
+import { useEffect, useRef } from 'react';
 import type { SenderAuthor } from '@shared/chat-contract';
 import Avatar from './Avatar';
+
+// Auto-rosnące pole (jak w ChatGPT): rośnie z treścią do limitu, potem scroll.
+const COMPOSER_MAX_H = 132; // ~6 wierszy
 
 /**
  * Kompozytor: przełącznik autora (Ona / Razem / On) + pole tekstowe.
@@ -38,39 +42,59 @@ export default function Composer({
   hisName,
   disabled,
 }: Props) {
+  // auto-grow: po każdej zmianie treści ustaw wysokość = scrollHeight (do limitu),
+  // powyżej limitu włącz scroll. Reset do 'auto' najpierw, by pole też się KURCZYŁO
+  // (np. po wysłaniu, gdy text → '').
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const next = Math.min(el.scrollHeight, COMPOSER_MAX_H);
+    el.style.height = `${next}px`;
+    el.style.overflowY = el.scrollHeight > COMPOSER_MAX_H ? 'auto' : 'hidden';
+  }, [text]);
+
   return (
     <div className="composer">
-      {/* przełącznik autora; aktywna pigułka dostaje kropkę(-i) i styl */}
-      <div className={`pills pills-${author.toLowerCase()}`}>
-        {PILLS.map((p) => (
-          <button
-            key={p.author}
-            type="button"
-            className={`pill ${author === p.author ? 'pill-active' : ''} pill-${p.author.toLowerCase()}`}
-            onClick={() => onAuthorChange(p.author)}
-          >
-            {/* awatar(y) strony — zawsze widoczne, podpowiadają, kto pisze */}
-            {p.author === 'HER' && <Avatar who="HER" size={18} alt="" />}
-            {p.author === 'HIM' && <Avatar who="HIM" size={18} alt="" />}
-            {p.author === 'TOGETHER' && (
-              <span className="pill-pair">
-                <Avatar who="HER" size={18} alt="" />
-                <Avatar who="HIM" size={18} alt="" />
-              </span>
-            )}
-            {p.label(herName, hisName)}
-          </button>
-        ))}
+      {/* przełącznik autora — pionowa lista „Piszesz jako": Ona / On / Razem.
+          Aktywna pozycja dostaje pigułkę w kolorze strony. */}
+      <div className={`author-select author-select-${author.toLowerCase()}`}>
+        <span className="author-select-label">Piszesz jako</span>
+        <div className="pills">
+          {PILLS.map((p) => (
+            <button
+              key={p.author}
+              type="button"
+              className={`pill ${author === p.author ? 'pill-active' : ''} pill-${p.author.toLowerCase()}`}
+              onClick={() => onAuthorChange(p.author)}
+            >
+              {/* awatar(y) strony — zawsze widoczne, podpowiadają, kto pisze */}
+              {p.author === 'HER' && <Avatar who="HER" size={20} alt="" />}
+              {p.author === 'HIM' && <Avatar who="HIM" size={20} alt="" />}
+              {p.author === 'TOGETHER' && (
+                <span className="pill-pair">
+                  <Avatar who="HER" size={20} alt="" />
+                  <Avatar who="HIM" size={20} alt="" />
+                </span>
+              )}
+              <span className="pill-label">{p.label(herName, hisName)}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* pole + przycisk wyślij (↑) */}
       <div className="input-wrap">
-        <input
+        <textarea
+          ref={taRef}
           className="input"
+          rows={1}
           value={text}
           placeholder={placeholder}
           onChange={(e) => onTextChange(e.target.value)}
           onKeyDown={(e) => {
+            // Enter wysyła; Shift+Enter robi nową linię (pole urośnie).
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               onSend();

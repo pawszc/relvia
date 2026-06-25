@@ -29,9 +29,10 @@ type AdvisorMode : String(10) enum { LEADING; LISTENING; PAUSED; }
 
 /** Pojedyncza sesja czatu pary z doradcą. */
 entity Conversations : cuid, managed {
-  title    : String;
-  herName  : String default 'Ona';    // etykieta UI — z danych, nie z kodu
-  hisName  : String default 'On';
+  title       : String;
+  herName     : String default 'Ona';    // etykieta UI — z danych, nie z kodu
+  hisName     : String default 'On';
+  accessToken : String;                   // sekret-token dostępu do TEJ konwersacji (capability) — patrz SAFETY.md
   messages : Composition of many Messages on messages.conversation = $self;
 
   // --- stan reżysera (silnik rozmowy) ---
@@ -43,6 +44,7 @@ entity Conversations : cuid, managed {
   lastActivityAt     : Timestamp;              // heartbeat (krok 4)
   model              : String;                 // model AI użyty do generacji (np. claude-haiku-4-5)
   lastComposerHint   : String(160);            // ostatnia podpowiedź do pola — by decide jej nie powtarzał
+  budgetReached      : Boolean default false;  // osiągnięto budżet konwersacji → łagodny read-only (config.js)
 
   // Zużycie tokenów warstwy DECYZJI (krok 5: decide modelem, odpala się co turę,
   // też przy WAIT — nie tworzy wiadomości, więc liczone narastająco tutaj).
@@ -51,6 +53,22 @@ entity Conversations : cuid, managed {
   decideCacheReadTokens     : Integer default 0;
   decideCacheCreationTokens : Integer default 0;
   parked             : Composition of many ParkedTopics on parked.conversation = $self;
+}
+
+/**
+ * Ledger zużycia tokenów per tura — na potrzeby GLOBALNEGO dziennego limitu
+ * (cała aplikacja, ostatnie 24h). `managed` daje createdAt (znacznik czasu), więc
+ * można sumować okno czasowe. Per-konwersacyjne liczniki na Conversations/Messages
+ * zostają osobno (do conversationUsage) — ten ledger jest tylko dla globalnego progu.
+ */
+entity UsageEvents : cuid, managed {
+  conversation        : Association to Conversations;
+  layer               : String(10);  // 'decide' | 'generate'
+  model               : String;
+  inputTokens         : Integer default 0;
+  outputTokens        : Integer default 0;
+  cacheReadTokens     : Integer default 0;
+  cacheCreationTokens : Integer default 0;
 }
 
 /** Zaparkowana dygresja — lista "do omówienia później". */

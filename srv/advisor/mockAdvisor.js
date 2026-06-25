@@ -91,7 +91,7 @@ module.exports = {
    * @param {object} context imiona pary
    * @param {import('../../shared/chat-contract').AdvisorDecision} [decision]
    */
-  async *generateReply(history, context = {}, decision) {
+  async *generateReply(history, context = {}, decision, _options = {}) {
     const dec = decision || { type: 'SUMMARIZE', kind: 'FULL' };
     const text = replyText(dec, history, context);
 

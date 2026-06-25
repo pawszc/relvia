@@ -21,6 +21,8 @@ const fs = require('fs');
 // w CI nie trzeba żadnego pliku. ADVISOR=mock + url PRZED require('@sap/cds').
 const DB_FILE = path.join(os.tmpdir(), `relvia-itest-${process.pid}.sqlite`);
 process.env.ADVISOR = 'mock';
+process.env.ADVISOR_ACCESS_CONTROL = 'false'; // ten plik testuje ORKIESTRACJĘ, nie dostęp (osobny: access.test.js)
+process.env.ADVISOR_NEWCONV_RATELIMIT = 'false'; // tworzymy wiele rozmów szybko (osobny test: newconv.test.js)
 process.env.cds_requires_db_credentials_url = DB_FILE;
 
 const { execFileSync } = require('child_process');
@@ -210,6 +212,15 @@ test('conversationUsage: niezerowe tokeny → rozbicie generacja vs decyzja + su
   assert.equal(u.decideOutputTokens, 30, 'decyzja out');
   assert.ok(u.generationCostUsd > 0 && u.decideCostUsd > 0, 'oba koszty niezerowe');
   assert.ok(Math.abs(Number(u.costUsd) - (u.generationCostUsd + u.decideCostUsd)) < 1e-9, 'suma = generacja + decyzja');
+});
+
+test('walidacja: za długa wiadomość → 413 (cap długości, anty-nadużycie kosztu)', async () => {
+  const { conversationId } = await srv.send('startConversation', {});
+  const tooLong = 'a'.repeat(5000); // > domyślny cap 4000
+  await assert.rejects(
+    () => srv.send('sendMessage', { conversationId, author: 'HER', text: tooLong }),
+    /MESSAGE_TOO_LONG/i,
+  );
 });
 
 // UWAGA: kolejność zdarzeń SSE na drucie (message.user → advisor.decision → advisor.start →

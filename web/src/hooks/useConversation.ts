@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   AdvisorDecisionType,
   AdvisorMode,
@@ -39,6 +39,40 @@ export interface AdvisorStatus {
 
 const uid = () => crypto.randomUUID();
 const nowIso = () => new Date().toISOString();
+
+/**
+ * Statyczne powitanie doradcy — ZERO tokenów / zero wywołań modelu. Pokazujemy je
+ * RAZ, na świeżym wejściu (pusta rozmowa), strumieniowane jak realne SSE, żeby od
+ * progu było czuć obecność doradcy (nie tylko placeholder w tle). Nie persystowane
+ * w bazie i nie wysyłane do modelu — żyje wyłącznie w stanie UI, więc leniwe
+ * tworzenie konwersacji zostaje nietknięte (rozmowa powstaje dopiero przy 1. wysyłce).
+ */
+const WELCOME_TEXT =
+  'Cześć. Jestem tu dla Was obojga — nie po to, żeby oceniać, kto ma rację, tylko żeby pomóc Wam się nawzajem usłyszeć. Zacznijcie, jak Wam wygodnie: jedno z Was albo wspólnie. Słucham.';
+const WELCOME_ID = 'welcome';
+
+/**
+ * Disclaimer bezpieczeństwa (A1) — pełna treść, pokazywana w stałej mikro-stopce pod ⓘ
+ * (nie jako dymka w czacie). Relvia to empatyczny mediator AI, NIE terapeuta i NIE pomoc
+ * doraźna. Ujawnienie AI spełnia obowiązek przejrzystości (EU AI Act art. 50). Numery
+ * zweryfikowane dla Polski (112 alarmowy; 116 123 kryzysowy telefon zaufania;
+ * 800 120 002 Niebieska Linia).
+ * ⚠ Przed publikacją: potwierdź numery dla docelowego rynku/języka. Patrz SAFETY.md / PRODUCTION.md.
+ */
+export const SAFETY_DISCLAIMER_TEXT =
+  'Relvia to doradca AI, nie terapeuta ani pomoc w nagłych sytuacjach. Jeśli potrzebujesz pilnej pomocy, zadzwoń pod 112. Wsparcie emocjonalne: całodobowy telefon zaufania 116 123; przy przemocy — Niebieska Linia 800 120 002.';
+
+/** Zwięzła linijka do stopki — zawsze widoczna; pełna treść (z numerami) kryje się pod „Potrzebujesz pomocy?". */
+export const SAFETY_DISCLAIMER_SHORT = 'Relvia to doradca AI, nie terapeuta.';
+
+/** Treść panelu „Potrzebujesz pomocy?" — same numery kryzysowe, bez powtarzania linijki stopki. */
+export const SAFETY_HELP_TEXT =
+  'Jeśli potrzebujesz pilnej pomocy, zadzwoń pod 112. Wsparcie emocjonalne: całodobowy telefon zaufania 116 123; przy przemocy — Niebieska Linia 800 120 002.';
+
+/** Dokleja tekst do wiadomości o danym id (no-op, gdy jej nie ma — np. para zaczęła sama). */
+function appendToId(messages: UiMessage[], id: string, text: string): UiMessage[] {
+  return messages.map((x) => (x.id === id ? { ...x, text: x.text + text } : x));
+}
 
 /** Status „na kogo doradca czeka" — gdy decyzja wskazuje następnego mówcę. */
 function waitHintFor(next: SenderAuthor, herName: string, hisName: string): string {
@@ -94,6 +128,9 @@ export function useConversation(client: ChatClient): UseConversation {
   // LENIWE tworzenie: konwersacja powstaje dopiero przy pierwszej wysłanej
   // wiadomości — nie przy wejściu na stronę. Żadnych pustych rekordów w bazie.
   const [conversationId, setConversationId] = useState<string | null>(null);
+  // sekret-token dostępu do tej konwersacji (capability) — w ref, by callbacki
+  // czytały najświeższy bez przebudowy. Ustawiany przy tworzeniu konwersacji.
+  const accessTokenRef = useRef<string | null>(null);
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [advisorTyping, setAdvisorTyping] = useState(false);
   const [advisorStatus, setAdvisorStatus] = useState<AdvisorStatus>({ kind: 'idle' });
@@ -113,10 +150,52 @@ export function useConversation(client: ChatClient): UseConversation {
   // każdej aktywności (nowa wiadomość, wysyłka, zmiana trybu). Nie w pauzie.
   useEffect(() => {
     setIdle(false);
-    if (messages.length === 0 || sending || advisorMode === 'PAUSED') return;
+    // samo powitanie doradcy (brak realnej tury pary) NIE uruchamia heartbeatu —
+    // inaczej placeholder zmieniłby się na „Wróćcie…" zanim para w ogóle zacznie.
+    const hasPairTurn = messages.some((m) => m.author !== 'ADVISOR');
+    if (!hasPairTurn || sending || advisorMode === 'PAUSED') return;
     const t = setTimeout(() => setIdle(true), 120000); // 2 min ciszy
     return () => clearTimeout(t);
   }, [messages, sending, advisorMode]);
+
+  // Powitanie doradcy (jednorazowe). Odtwarzamy tor SSE: chwila „namysłu" po renderze
+  // → kropki „pisze" → strumień słowo-po-słowie → wygaszenie. Guard refem przetrwa
+  // React StrictMode: cleanup CELOWO nie kasuje timerów (drugi montaż w devie nie może
+  // wyzerować powitania), a ref blokuje jego zdublowanie. W produkcji ekran nie
+  // odmontowuje się w trakcie sesji, więc brak cleanup jest bezpieczny.
+  const welcomedRef = useRef(false);
+  useEffect(() => {
+    if (welcomedRef.current) return;
+    if (conversationId || messages.length > 0) return; // tylko świeże wejście
+    welcomedRef.current = true;
+
+    setTimeout(() => {
+      setAdvisorTyping(true);
+      setAdvisorStatus({ kind: 'typing' });
+      // pusta dymka doradcy = animowane kropki „pisze" — tylko gdy rozmowa wciąż pusta
+      setMessages((m) =>
+        // A1: disclaimer NIE jest już dymką w czacie — żyje w stałej mikro-stopce (SafetyFooter).
+        m.length === 0
+          ? [{ id: WELCOME_ID, conversationId: '', seq: 0, author: 'ADVISOR', text: '', createdAt: nowIso(), kind: 'FULL' } as UiMessage]
+          : m,
+      );
+      // Chunkowanie i tempo 1:1 z realnym torem SSE (mockAdvisor.js / mockChatClient.ts):
+      // chunk = „słowo + spacja" (/\S+\s*/g), 40 ms na chunk, po krótkiej chwili „myśli"
+      // (kropki widoczne ~480 ms) — żeby wrażenie było nie do odróżnienia od zwykłej tury.
+      const chunks = WELCOME_TEXT.match(/\S+\s*/g) ?? [WELCOME_TEXT];
+      chunks.forEach((c, i) => {
+        setTimeout(() => {
+          setMessages((m) => appendToId(m, WELCOME_ID, c));
+        }, 480 + i * 40);
+      });
+      // koniec strumienia — wygaś „pisze" (tylko jeśli nikt nie przejął statusu)
+      setTimeout(() => {
+        setAdvisorTyping(false);
+        setAdvisorStatus((s) => (s.kind === 'typing' ? { kind: 'idle' } : s));
+      }, 480 + chunks.length * 40 + 120);
+    }, 450); // namysł po wyrenderowaniu — żeby poczuć opóźnienie
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /**
    * ⤵ TU DZIEJE SIĘ LENIWE TWORZENIE KONWERSACJI.
@@ -129,6 +208,7 @@ export function useConversation(client: ChatClient): UseConversation {
     if (conversationId) return conversationId;
     // jedyne miejsce, w którym powstaje konwersacja:
     const meta = await client.startConversation('Niedziele');
+    accessTokenRef.current = meta.accessToken; // zapamiętaj token PRZED pierwszą wysyłką
     setConversationId(meta.conversationId);
     setHerName(meta.herName); // imiona z bazy (encja Conversations)
     setHisName(meta.hisName);
@@ -153,7 +233,12 @@ export function useConversation(client: ChatClient): UseConversation {
 
       let confirmed = false;
       try {
-        for await (const ev of client.sendMessage({ conversationId: cid, author, text })) {
+        for await (const ev of client.sendMessage({
+          conversationId: cid,
+          author,
+          text,
+          accessToken: accessTokenRef.current ?? undefined,
+        })) {
           switch (ev.type) {
             case 'message.user':
               confirmed = true;
@@ -293,8 +378,9 @@ export function useConversation(client: ChatClient): UseConversation {
   const resolveParked = useCallback(
     async (topicId: string, action: ParkedAction) => {
       if (!conversationId) return;
-      await client.resolveParkedTopic(conversationId, topicId, action);
-      const s = await client.getState(conversationId);
+      const tok = accessTokenRef.current ?? undefined;
+      await client.resolveParkedTopic(conversationId, topicId, action, tok);
+      const s = await client.getState(conversationId, tok);
       setParkedTopics(s.parkedTopics);
       setPhase(s.phase);
       setAdvisorModeState(s.advisorMode);
@@ -307,13 +393,14 @@ export function useConversation(client: ChatClient): UseConversation {
     async (mode: AdvisorMode) => {
       if (!conversationId) return;
       setAdvisorModeState(mode);
+      const tok = accessTokenRef.current ?? undefined;
       try {
-        await client.setAdvisorMode(conversationId, mode);
+        await client.setAdvisorMode(conversationId, mode, tok);
         // „tylko słucha": doradca milknie → wyczyść status sceniczny i pokaż pożegnanie
         if (mode === 'PAUSED') {
           setAdvisorTyping(false);
           setAdvisorStatus({ kind: 'idle' });
-          setMessages(await client.getHistory(conversationId));
+          setMessages(await client.getHistory(conversationId, tok));
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Nie udało się zmienić trybu doradcy.');
