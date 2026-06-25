@@ -115,6 +115,7 @@ export interface SendMessageRequest {
   conversationId: string;
   author: SenderAuthor;
   text: string;
+  accessToken?: string; // capability token konwersacji (realny klient HTTP zawsze dołącza)
 }
 
 /**
@@ -153,6 +154,9 @@ export interface ConversationMeta {
   conversationId: string;
   herName: string;
   hisName: string;
+  // Sekret-token dostępu do tej konwersacji (capability). Klient MUSI go dołączać
+  // do każdej kolejnej akcji. Niezgadywalny; jedyny dowód „to moja rozmowa".
+  accessToken: string;
 }
 
 /** Akcja na zaparkowanym temacie z panelu „do omówienia później". */
@@ -165,16 +169,23 @@ export type UiConversationState = Pick<
 >;
 
 /** Kontrakt klienta używany przez UI. Mock i realny klient są wymienne. */
+// Uwaga: `accessToken` jest opcjonalny w sygnaturach (mock offline go ignoruje),
+// ale realny klient HTTP ZAWSZE go dołącza, a backend go WYMAGA (403 bez niego).
 export interface ChatClient {
   startConversation(title?: string): Promise<ConversationMeta>;
-  getHistory(conversationId: string): Promise<ChatMessage[]>;
+  getHistory(conversationId: string, accessToken?: string): Promise<ChatMessage[]>;
   sendMessage(req: SendMessageRequest): AsyncIterable<ChatStreamEvent>;
   /** Stan reżysera (faza/kotwica/parking) — do odtworzenia UI po odświeżeniu. */
-  getState(conversationId: string): Promise<UiConversationState>;
+  getState(conversationId: string, accessToken?: string): Promise<UiConversationState>;
   /** Zmiana stanu zaparkowanego tematu (wróćmy teraz / załatwione / odrzuć). */
-  resolveParkedTopic(conversationId: string, topicId: string, action: ParkedAction): Promise<void>;
+  resolveParkedTopic(
+    conversationId: string,
+    topicId: string,
+    action: ParkedAction,
+    accessToken?: string,
+  ): Promise<void>;
   /** Pauza/wznowienie doradcy (krok 4): PAUSED = „rozmawiajcie sami", LEADING = wróć. */
-  setAdvisorMode(conversationId: string, mode: AdvisorMode): Promise<void>;
+  setAdvisorMode(conversationId: string, mode: AdvisorMode, accessToken?: string): Promise<void>;
 }
 
 /** Kontekst przekazywany do warstwy AI (np. imiona do prefiksów mówców). */
@@ -204,6 +215,7 @@ export interface AdvisorService {
     history: ChatMessage[],
     context?: AdvisorContext,
     decision?: AdvisorDecision, // kształtuje treść (ton/długość) wg typu decyzji
+    options?: { signal?: AbortSignal }, // abort generacji przy rozłączeniu klienta
   ): AsyncIterable<
     | { type: 'delta'; text: string }
     // 'end' niesie zużycie tokenów tej generacji (mock = zera, anthropic = realne)

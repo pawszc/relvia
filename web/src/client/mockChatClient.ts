@@ -282,7 +282,8 @@ export const mockChatClient: ChatClient = {
     const conversationId = uid();
     store.set(conversationId, []); // start od pustej rozmowy — bez seedowanych wiadomości
     stateStore.set(conversationId, freshState());
-    return { conversationId, herName: 'Ona', hisName: 'On' };
+    // mock offline nie egzekwuje dostępu — token jest atrapą dla zgodności z kontraktem
+    return { conversationId, herName: 'Ona', hisName: 'On', accessToken: uid() };
   },
 
   async getHistory(conversationId: string) {

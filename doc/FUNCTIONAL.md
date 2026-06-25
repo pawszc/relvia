@@ -9,7 +9,7 @@ Pozostałe dokumenty (uzupełniające):
 - **[ENGINE.md](ENGINE.md)** — ten sam silnik od strony technicznej (typy decyzji, reguły, mapa kodu).
 - **[CONTRACT.md](CONTRACT.md)** — protokół API (encje, akcje, zdarzenia SSE).
 - **[SAFETY.md](SAFETY.md)** — szczegółowa postawa bezpieczeństwa.
-- **[README.md](README.md)** — architektura i uruchomienie.
+- **[README.md](../README.md)** — architektura i uruchomienie.
 
 > **Czym to NIE jest.** relvia to **empatyczny mediator**, nie terapeuta, nie usługa kryzysowa
 > i nie wyrób medyczny. W realnym zagrożeniu kieruje do profesjonalistów i służb — i mówi to wprost.
@@ -310,6 +310,11 @@ Dzięki temu nic ważnego nie ginie, a rozmowa nie rozłazi się na pięć temat
 **Zasada naczelna:** wykrywanie kryzysu robi **model** — semantycznie i wielojęzycznie — i ma **absolutny
 priorytet** ponad wszystkim innym.
 
+**Stała stopka (zawsze widoczna, niezależna od rozmowy):** krótka linijka „Relvia to doradca AI, nie terapeuta"
+(ujawnia, że rozmawiasz z AI) + chowany panel „Potrzebujesz pomocy?" z numerami (112; 116 123 telefon zaufania;
+800 120 002 Niebieska Linia). To uzupełnia numer, który model podaje w samej dymce kryzysowej. **Prywatność:**
+rozmowa jest chroniona sekretnym tokenem dostępu — nikt postronny nie pobierze cudzych rozmów (szczegóły w SAFETY.md).
+
 **Co wykrywa:** przemoc (też domową, ze strony partnera, wobec dzieci), samookaleczenie, myśli
 samobójcze, zagrożenie życia/zdrowia — **w dowolnym języku**, także parafrazą, eufemizmem czy aluzją
 („nie chcę dłużej żyć", „lepiej żeby mnie nie było", „boję się, że mnie skrzywdzi"). Jednocześnie
@@ -360,7 +365,22 @@ Doradca działa na płatnym modelu AI, więc projekt świadomie pilnuje kosztu:
   milczy, są tańsze.
 - **Tryb „Tylko słucha" jest darmowy** — zero wywołań modelu.
 - W długiej rozmowie koszt rośnie szybciej niż liniowo, bo każda decyzja bierze pod uwagę całą dotychczasową
-  historię (to znany kandydat do optymalizacji).
+  historię. **Łagodzi to prompt caching** (patrz niżej) — nie skraca rozmowy, model dostaje pełen kontekst,
+  ale za znany początek płaci ułamek ceny.
+
+**Ochrona kosztu i dostępu (decyzje produktowe, szczegóły w [SAFETY.md](SAFETY.md)):**
+- **Budżet na konwersację.** Twardy próg kosztu (domyślnie ~0,50 USD) liczony przed każdą turą. Po jego
+  osiągnięciu doradca wchodzi w **łagodny read-only**: zostawia ciepłą notkę i przestaje wołać model — para
+  może dalej pisać między sobą. Próg jest **konfigurowalny w jednym miejscu**.
+- **Globalny limit dzienny aplikacji.** Bezpiecznik na całą aplikację: jeśli łączny koszt **wszystkich** rozmów
+  z **ostatnich 24 h** przekroczy próg (domyślnie ~20 USD), każda rozmowa dostaje **ten sam** łagodny read-only
+  z tą samą notką (prostym językiem: „skończyła się pula na rozmowy na dziś"). To stan przejściowy — odżywa
+  sam, gdy stare zużycie wypadnie z okna 24 h.
+- **Prompt caching warstwy decyzji.** Cache prefiksu historii: powtarzalny początek promptu liczony ~0,1×
+  zamiast 1×. **Bezstratny** — nie wycina ani słowa z kontekstu, jedynie tańszy. (To NIE jest skracanie
+  historii do sedna — tego świadomie nie robimy, bo gubiłoby niuans potrzebny mediacji.)
+- **Rate limit.** Minimalny odstęp między wiadomościami w jednej konwersacji — para „z rąk do rąk" tego nie
+  odczuje, chroni publiczny endpoint przed zalewaniem.
 
 Aplikacja **rozlicza zużycie** i pokazuje koszt z podziałem na „decyzje" vs „wypowiedzi", przeliczony na
 dolary wg stawek aktywnego modelu.
@@ -419,4 +439,4 @@ polski strażnik działa też na żywo (drzwi wejścia z §6.3) — poza polskim
 | Rejestr empatii wg płci, drzwi podpowiedzi | [ENGINE.md](ENGINE.md) §3 („Rejestr empatii wg adresata") |
 | Protokół (akcje, zdarzenia, encje) | [CONTRACT.md](CONTRACT.md) |
 | Bezpieczeństwo (warstwy, kompromisy) | [SAFETY.md](SAFETY.md) |
-| Architektura, uruchomienie, koszty | [README.md](README.md) |
+| Architektura, uruchomienie, koszty | [README.md](../README.md) |

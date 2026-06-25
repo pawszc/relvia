@@ -14,22 +14,38 @@ using relvia as db from '../db/schema';
  */
 service ChatService @(path: '/chat') {
 
-  @readonly
-  entity Conversations as projection on db.Conversations;
+  // ⚠ BEZPIECZEŃSTWO: NIE wystawiamy encji bazy jako OData (`Conversations`/`Messages`/
+  // `ParkedTopics`). Wcześniej `@readonly` projekcje pozwalały KAŻDEMU pobrać `GET /chat/Messages`
+  // = prywatne rozmowy WSZYSTKICH par. Dostęp jest teraz wyłącznie przez akcje, a każda akcja
+  // wymaga `accessToken` (capability) pasującego do danej konwersacji. Pełny, zaufany wgląd w bazę
+  // jest w osobnym, chronionym `AdminService` (/admin). Szczegóły: SAFETY.md.
 
-  @readonly
-  entity Messages as projection on db.Messages;
-
-  @readonly
-  entity ParkedTopics as projection on db.ParkedTopics;
-
-  /** Utworzenie nowej konwersacji. Zwraca identyfikator i imiona (domyślnie Ona/On). */
+  /**
+   * Utworzenie nowej konwersacji. Zwraca identyfikator, imiona oraz `accessToken` —
+   * sekret-token, który klient MUSI dołączać do każdej kolejnej akcji tej konwersacji.
+   */
   action startConversation(
     title : String
   ) returns {
     conversationId : UUID;
     herName        : String;
     hisName        : String;
+    accessToken    : String;
+  };
+
+  /** Historia wiadomości JEDNEJ konwersacji (zastępuje dawny odczyt OData). Wymaga accessToken. */
+  action getHistory(
+    conversationId : UUID,
+    accessToken    : String
+  ) returns array of {
+    id           : UUID;
+    conversationId : UUID;
+    seq          : Integer;
+    author       : db.Author;
+    text         : String;
+    createdAt    : Timestamp;
+    kind         : String;
+    decisionType : String;
   };
 
   /**
@@ -42,7 +58,8 @@ service ChatService @(path: '/chat') {
   action sendMessage(
     conversationId : UUID,
     author         : db.Author,
-    text           : String
+    text           : String,
+    accessToken    : String
   ) returns {
     advisorMessageId : UUID;
   };
@@ -52,7 +69,7 @@ service ChatService @(path: '/chat') {
    * (faza, kotwica tematu, tryb, lista zaparkowanych tematów).
    * Akcja (nie funkcja) dla spójnego wołania POST z klienta.
    */
-  action conversationState(conversationId : UUID) returns {
+  action conversationState(conversationId : UUID, accessToken : String) returns {
     phase       : db.Phase;
     topic       : String;
     advisorMode : db.AdvisorMode;
@@ -71,7 +88,8 @@ service ChatService @(path: '/chat') {
   action resolveParkedTopic(
     conversationId : UUID,
     topicId        : UUID,
-    action         : String
+    action         : String,
+    accessToken    : String
   ) returns {
     ok : Boolean;
   };
@@ -79,13 +97,14 @@ service ChatService @(path: '/chat') {
   /** Pauza/wznowienie doradcy (krok 4). mode: PAUSED („rozmawiajcie sami") / LEADING (wróć). */
   action setAdvisorMode(
     conversationId : UUID,
-    mode           : db.AdvisorMode
+    mode           : db.AdvisorMode,
+    accessToken    : String
   ) returns {
     ok : Boolean;
   };
 
   /** Zagregowane zużycie tokenów dla całej konwersacji (suma po wiadomościach). */
-  function conversationUsage(conversationId : UUID) returns {
+  function conversationUsage(conversationId : UUID, accessToken : String) returns {
     // generacja (dymki doradcy)
     inputTokens               : Integer;
     outputTokens              : Integer;

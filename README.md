@@ -9,17 +9,20 @@ analizuje, ale odzywa się tylko wtedy, gdy to pomaga (nie po każdej wiadomośc
 
 ## Dokumentacja
 
-- **[FUNCTIONAL.md](FUNCTIONAL.md)** — dokumentacja funkcjonalna: jak aplikacja się zachowuje (dla osób produktowych, testerów, nowych w zespole).
-- **[TECHNICAL.md](TECHNICAL.md)** — specyfikacja techniczna: jak to jest zbudowane, z wyjaśnieniami pojęć (dla developera junior/mid).
-- **[ENGINE.md](ENGINE.md)** — silnik rozmowy („reżyser"): cele, typy decyzji, fazy, pogłębianie, kompozytor, rejestr empatii wg płci, roadmapa.
-- **[CONTRACT.md](CONTRACT.md)** — protokół usługi CAP: encje, akcje, zdarzenia SSE.
-- **[SAFETY.md](SAFETY.md)** — postawa bezpieczeństwa: detekcja kryzysu, świadome kompromisy.
+Cała dokumentacja jest w katalogu **[`doc/`](doc/)** (poza tym README):
+
+- **[doc/FUNCTIONAL.md](doc/FUNCTIONAL.md)** — dokumentacja funkcjonalna: jak aplikacja się zachowuje (dla osób produktowych, testerów, nowych w zespole).
+- **[doc/TECHNICAL.md](doc/TECHNICAL.md)** — specyfikacja techniczna: jak to jest zbudowane, z wyjaśnieniami pojęć (dla developera junior/mid).
+- **[doc/ENGINE.md](doc/ENGINE.md)** — silnik rozmowy („reżyser"): cele, typy decyzji, fazy, pogłębianie, kompozytor, rejestr empatii wg płci, roadmapa.
+- **[doc/CONTRACT.md](doc/CONTRACT.md)** — protokół usługi CAP: akcje, `accessToken`, zdarzenia SSE, AdminService.
+- **[doc/SAFETY.md](doc/SAFETY.md)** — bezpieczeństwo: detekcja kryzysu, ochrona dostępu (capability token + admin), dławiki, świadome kompromisy.
+- **[doc/PRODUCTION.md](doc/PRODUCTION.md)** — gotowość produkcyjna i dług: must-do przed startem + backlog (skala, RODO, observability).
 
 ## Architektura
 
 ```
-web/  (React + Vite + TS)  ──/chat (OData + akcje + SSE)──▶  CAP (Node/JS) ──▶ SQLite (db.sqlite)
-                                                                  └─▶ Anthropic SDK (Haiku)
+web/  (React + Vite + TS)  ──/chat (akcje + SSE; capability token)──▶  CAP (Node/JS) ──▶ SQLite (db.sqlite)
+                                                       /admin (OData, za bearer)──▶        └─▶ Anthropic SDK (Haiku)
 ```
 
 - **Frontend:** React 18 + Vite + TypeScript ([`web/`](web/)). Wariant wizualny „A4".
@@ -78,12 +81,16 @@ Front ma wbudowany mock klienta. Z `VITE_USE_MOCK=true` działa **bez** CAP i be
 
 ```
 relvia/
-├─ db/schema.cds            # model danych (stan reżysera, ParkedTopics, Messages)
+├─ doc/                     # cała dokumentacja (FUNCTIONAL/TECHNICAL/ENGINE/CONTRACT/SAFETY/PRODUCTION)
+├─ db/schema.cds            # model danych (stan reżysera, accessToken, budgetReached, ParkedTopics, Messages, UsageEvents)
 ├─ srv/
-│  ├─ chat-service.cds/.js  # usługa CAP: akcje + SSE + persystencja
-│  ├─ server.js             # bootstrap (wczytuje relvia.env)
-│  └─ advisor/              # warstwa AI: advisor.js (wybór), anthropicAdvisor.js,
-│                           #   mockAdvisor.js, decisionRules.js (fallback+mock), models.js, pricing.js
+│  ├─ chat-service.cds/.js  # usługa CAP: akcje + SSE + persystencja + dostęp (assertAccess) + dławiki
+│  ├─ admin-service.cds     # AdminService (/admin) — pełny OData read-only bazy
+│  ├─ admin-auth.js         # bramka /admin (bearer token)
+│  ├─ rate-limit.js         # dławik nowych rozmów (odstęp + limit godzinowy)
+│  ├─ server.js             # bootstrap (relvia.env + /health + /admin)
+│  └─ advisor/              # warstwa AI: advisor.js (wybór), anthropicAdvisor.js, mockAdvisor.js,
+│                           #   decisionRules.js (fallback+mock), models.js, pricing.js, config.js (progi/flagi)
 ├─ shared/chat-contract.ts  # wspólny kontrakt typów (front + backend)
 └─ web/                     # frontend React + Vite
 ```
@@ -93,9 +100,9 @@ relvia/
 `decide` woła model **co turę** (też gdy doradca milczy) → wejście rośnie kwadratowo w długiej rozmowie
 (kandydat do optymalizacji). Funkcja `conversationUsage` rozbija koszt na generację vs decyzję (`costUsd`).
 
-## Przed publikacją (TODO)
+## Przed publikacją
 
-- Rate limiting / ochrona publicznego endpointu.
-- Wdrożenie monolitu: host z **trwałym procesem Node** (SSE = długie połączenie) i **systemem plików**
-  (SQLite). Hosty statyczne/serverless nie nadają się na backend (pod sam SPA owszem).
-- Ewentualnie SQLite → Postgres przy większym ruchu.
+Pełna lista gotowości i długu: **[doc/PRODUCTION.md](doc/PRODUCTION.md)**. W skrócie — zrobione: ochrona dostępu
+(capability token + AdminService), budżety + globalny limit, rate-limity, dławiki, anti-injection, disclaimer
+kryzysowy. Zostało głównie: **polityka prywatności**, **wdrożenie** (host z trwałym procesem Node + wolumen na
+SQLite; statyczny/serverless nie nadaje się na backend), oraz dług na skalę (Postgres/Redis, observability).

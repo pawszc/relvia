@@ -84,17 +84,23 @@ export const httpChatClient: ChatClient = {
       conversationId: j.conversationId as string,
       herName: (j.herName as string) ?? 'Ona',
       hisName: (j.hisName as string) ?? 'On',
+      accessToken: j.accessToken as string,
     };
   },
 
-  async getHistory(conversationId: string) {
-    const filter = encodeURIComponent(`conversation_ID eq ${conversationId}`);
-    const r = await fetch(`${BASE}/Messages?$filter=${filter}&$orderby=seq`, {
-      headers: { Accept: 'application/json' },
+  async getHistory(conversationId: string, accessToken?: string) {
+    // Historia przez AKCJĘ (nie OData) — backend nie wystawia już encji Messages,
+    // a akcja wymaga accessToken (capability tej konwersacji).
+    const r = await fetch(`${BASE}/getHistory`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId, accessToken }),
     });
     if (!r.ok) throw new Error(`getHistory: HTTP ${r.status}`);
     const j = await r.json();
-    return (j.value ?? []).map(toMessage);
+    // akcja CAP zwraca tablicę w `value`
+    const rows = (j.value ?? j) as Record<string, unknown>[];
+    return rows.map(toMessage);
   },
 
   async *sendMessage(req: SendMessageRequest): AsyncIterable<ChatStreamEvent> {
@@ -110,11 +116,11 @@ export const httpChatClient: ChatClient = {
     yield* parseSSE(r.body);
   },
 
-  async getState(conversationId: string): Promise<UiConversationState> {
+  async getState(conversationId: string, accessToken?: string): Promise<UiConversationState> {
     const r = await fetch(`${BASE}/conversationState`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conversationId }),
+      body: JSON.stringify({ conversationId, accessToken }),
     });
     if (!r.ok) throw new Error(`conversationState: HTTP ${r.status}`);
     const j = await r.json();
@@ -126,20 +132,25 @@ export const httpChatClient: ChatClient = {
     };
   },
 
-  async resolveParkedTopic(conversationId: string, topicId: string, action: ParkedAction): Promise<void> {
+  async resolveParkedTopic(
+    conversationId: string,
+    topicId: string,
+    action: ParkedAction,
+    accessToken?: string,
+  ): Promise<void> {
     const r = await fetch(`${BASE}/resolveParkedTopic`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conversationId, topicId, action }),
+      body: JSON.stringify({ conversationId, topicId, action, accessToken }),
     });
     if (!r.ok) throw new Error(`resolveParkedTopic: HTTP ${r.status}`);
   },
 
-  async setAdvisorMode(conversationId: string, mode): Promise<void> {
+  async setAdvisorMode(conversationId: string, mode, accessToken?: string): Promise<void> {
     const r = await fetch(`${BASE}/setAdvisorMode`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conversationId, mode }),
+      body: JSON.stringify({ conversationId, mode, accessToken }),
     });
     if (!r.ok) throw new Error(`setAdvisorMode: HTTP ${r.status}`);
   },

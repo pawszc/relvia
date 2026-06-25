@@ -4,6 +4,7 @@ import { useConversation, type LastDecision } from '../hooks/useConversation';
 import MessageList from './MessageList';
 import Composer from './Composer';
 import Avatar from './Avatar';
+import SafetyFooter from './SafetyFooter';
 
 /** Etykiety faz — dyskretny wskaźnik bieżącego miękkiego celu rozmowy. */
 const PHASE_LABEL: Record<Phase, string> = {
@@ -20,6 +21,10 @@ const PHASE_ORDER: Phase[] = ['OPENING', 'PERSPECTIVE_A', 'PERSPECTIVE_B', 'PARA
 // Cała logika trybu (advisorMode/setMode/PAUSED) zostaje w kodzie — możemy do niej
 // wrócić, włączając VITE_ADVISOR_MODE_TOGGLE=true (np. w web/.env.local).
 const SHOW_ADVISOR_MODE_TOGGLE = import.meta.env.VITE_ADVISOR_MODE_TOGGLE === 'true';
+
+// Flaga: wskaźnik postępu fazy (Otwarcie → Ustalenia). Domyślnie UKRYTY — nie pokazujemy
+// go użytkownikom, ale łatwo włączyć do testów: VITE_PHASE_PROGRESS=true (np. w web/.env.local).
+const SHOW_PHASE_PROGRESS = import.meta.env.VITE_PHASE_PROGRESS === 'true';
 
 /**
  * „Inteligentny kompozytor" (faza 2): placeholder naprowadza na konstruktywny krok
@@ -184,8 +189,9 @@ export default function ChatScreen({ client }: Props) {
         </div>
       </header>
 
-      {/* wstęga faz — bieżący miękki cel rozmowy (postęp Otwarcie → Ustalenia) */}
-      {messages.length > 0 && (
+      {/* wstęga faz — bieżący miękki cel rozmowy (postęp Otwarcie → Ustalenia).
+          Ukryta za flagą SHOW_PHASE_PROGRESS — domyślnie niewidoczna dla użytkowników. */}
+      {SHOW_PHASE_PROGRESS && messages.length > 0 && (
         <div className="phase-ribbon" title={`Faza ${PHASE_ORDER.indexOf(phase) + 1}/6`}>
           <span className="phase-ribbon-label">Faza</span>
           <div className="phase-track">
@@ -242,10 +248,10 @@ export default function ChatScreen({ client }: Props) {
           <Avatar who="ADVISOR" size={22} />
           <span>{waitFor === 'TOGETHER' ? 'czeka na Waszą wspólną odpowiedź' : 'czeka na odpowiedź'}</span>
           {waitFor === 'TOGETHER' ? (
-            <>
+            <span className="pill-pair">
               <Avatar who="HER" size={22} pulse alt={herName} />
               <Avatar who="HIM" size={22} pulse alt={hisName} />
-            </>
+            </span>
           ) : (
             <Avatar who={waitFor} size={22} pulse alt={waitFor === 'HER' ? herName : hisName} />
           )}
@@ -274,6 +280,9 @@ export default function ChatScreen({ client }: Props) {
         hisName={hisName}
         disabled={!ready || sending}
       />
+
+      {/* stała mikro-stopka bezpieczeństwa (A1) — ujawnienie AI + numery pod ⓘ */}
+      <SafetyFooter />
     </div>
   );
 }
