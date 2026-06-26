@@ -1012,10 +1012,32 @@ body {
   .row-him {
     max-width: 78%;
   }
+  /* doradca: max-width (nie stałe width) → dymka zwęża się do treści jak Ona/On,
+     więc krótkie wypowiedzi nie zostawiają pustego po prawej (przy wyrów. do lewej) */
   .row-advisor {
-    width: 78%;
+    width: auto;
+    max-width: 82%;
   }
   .row-advisor-center {
-    width: 90%;
+    width: auto;
+    max-width: 90%;
+  }
+  .bubble-advisor {
+    width: auto;
+    max-width: 100%;
+  }
+
+  /* (opt) mniej „powietrza" w dymkach: ciaśniejszy padding i interlinia */
+  .bubble-advisor {
+    padding: 11px 15px;
+    line-height: 1.5;
+  }
+  .bubble-her,
+  .bubble-him {
+    padding: 10px 14px;
+    line-height: 1.45;
+  }
+  .bubble-together {
+    padding: 14px 18px;
   }
 }
