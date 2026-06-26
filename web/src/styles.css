@@ -4,11 +4,19 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+}
 body {
   margin: 0;
   background: #e9e4dc;
   font-family: 'Hanken Grotesk', sans-serif;
   color: #33302a;
+  /* tylko lista wiadomości (.messages) scrolluje wewnętrznie — dokument jako całość
+     nie, bo na iOS Safari minimalny scroll dokumentu wsuwał nagłówek pod pasek stanu
+     przy pierwszym renderze (widoczne dopiero po lekkim scrollu w dół) */
+  overflow: hidden;
 }
 
 ::-webkit-scrollbar {
@@ -965,5 +973,30 @@ body {
   /* (4) mniej oddechu po bokach — telefon ma mało miejsca w poziomie */
   .messages {
     padding: 16px 18px;
+  }
+
+  /* (2) stopka bezpieczeństwa: zwarciejsze 2 linie zamiast dwóch „pełnowymiarowych".
+     Linia 1 = wymagane ujawnienie AI + „Potrzebujesz pomocy?"; akceptacja schodzi do
+     osobnej, mniejszej linijki (drobny druk), więc zajmuje wyraźnie mniej miejsca. */
+  .composer {
+    padding: 11px 16px 12px;
+  }
+  .safety-footer {
+    padding: 0 16px 5px;
+    font-size: 10px;
+  }
+  .safety-footer-line {
+    gap: 3px 6px;
+  }
+  /* separator „·” zbędny, gdy akceptacja jest w osobnej linijce */
+  .safety-footer-sep {
+    display: none;
+  }
+  .safety-footer-accept {
+    flex-basis: 100%;
+    text-align: center;
+    font-size: 9.5px;
+    line-height: 1.3;
+    color: #b6a78f;
   }
 }
