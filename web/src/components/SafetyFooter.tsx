@@ -14,7 +14,11 @@ export default function SafetyFooter() {
   return (
     <div className="safety-footer">
       <div className="safety-footer-line">
-        <span className="safety-footer-text">{SAFETY_DISCLAIMER_SHORT}</span>
+        <span className="safety-footer-text">
+          {SAFETY_DISCLAIMER_SHORT}
+          {/* kropka tylko na desktopie — na mobile po niej idzie małe „pomoc” */}
+          <span className="ftr-full">.</span>
+        </span>
         <button
           type="button"
           className="safety-footer-info"
@@ -23,12 +27,14 @@ export default function SafetyFooter() {
         >
           {/* pełna etykieta na desktopie, skrót na mobile (jedna linia stopki) */}
           <span className="ftr-full">Potrzebujesz pomocy?</span>
-          <span className="ftr-short">Pomoc</span>
+          <span className="ftr-short">pomoc</span>
         </button>
-        <span className="safety-footer-sep" aria-hidden="true">·</span>
+        {/* separator „·” tylko na desktopie — na mobile po „pomoc” idzie wprost „korzystając…” */}
+        <span className="safety-footer-sep ftr-full" aria-hidden="true">·</span>
         <span className="safety-footer-accept">
-          {/* na desktopie pełna klauzula zgody; na mobile same linki (oszczędność miejsca) */}
+          {/* desktop: pełna klauzula zgody; mobile: krótka preambuła + linki */}
           <span className="ftr-full">Korzystając z Relvii, akceptujesz </span>
+          <span className="ftr-short">korzystając akceptujesz </span>
           <a href="#regulamin">Regulamin</a>
           <span className="ftr-full"> i </span>
           <span className="ftr-short"> · </span>

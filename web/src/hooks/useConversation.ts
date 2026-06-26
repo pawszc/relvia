@@ -63,7 +63,7 @@ export const SAFETY_DISCLAIMER_TEXT =
   'Relvia to doradca AI, nie terapeuta ani pomoc w nagłych sytuacjach. Jeśli potrzebujesz pilnej pomocy, zadzwoń pod 112. Wsparcie emocjonalne: całodobowy telefon zaufania 116 123; przy przemocy — Niebieska Linia 800 120 002.';
 
 /** Zwięzła linijka do stopki — zawsze widoczna; pełna treść (z numerami) kryje się pod „Potrzebujesz pomocy?". */
-export const SAFETY_DISCLAIMER_SHORT = 'Relvia to doradca AI, nie terapeuta.';
+export const SAFETY_DISCLAIMER_SHORT = 'Relvia to doradca AI a nie terapeuta';
 
 /** Treść panelu „Potrzebujesz pomocy?" — same numery kryzysowe, bez powtarzania linijki stopki. */
 export const SAFETY_HELP_TEXT =

@@ -994,13 +994,11 @@ body {
   }
   .safety-footer {
     padding: 0 12px 6px;
-    font-size: 8.5px; /* mieści całą linię też na 320px (iPhone SE/mini) */
+    font-size: 8px; /* jedna linia na typowych telefonach (≥375px); węższe zawiną łagodnie */
     line-height: 1.3;
   }
   .safety-footer-line {
-    flex-wrap: nowrap; /* trzymaj w jednej linii */
-    gap: 4px;
-    white-space: nowrap;
+    gap: 0 4px; /* wrap dozwolony — na wąskich ekranach 2 linie zamiast obcięcia */
   }
   .safety-footer-accept {
     color: #b6a78f;
