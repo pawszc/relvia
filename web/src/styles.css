@@ -673,9 +673,11 @@ body {
    Pełna treść z numerami kryzysowymi rozwija się pod ⓘ. Najmniejszy ślad na ekranie. */
 .safety-footer {
   flex: none;
-  margin-top: -6px; /* domyka odstęp po kompozytorze — stopka siedzi bliżej pola */
-  padding: 0 22px 6px;
-  background: #fdfbf7;
+  /* poza panelem kompozytora: siedzi na tle karty, jako osobny pas POD białym
+     panelem (a nie jako jego część) */
+  margin-top: 0;
+  padding: 9px 22px 10px;
+  background: transparent;
   color: #a99a82;
   font: 500 11px 'Hanken Grotesk';
 }
@@ -993,7 +995,7 @@ body {
     display: inline;
   }
   .safety-footer {
-    padding: 0 12px 6px;
+    padding: 7px 12px 9px;
     font-size: 8px; /* jedna linia na typowych telefonach (≥375px); węższe zawiną łagodnie */
     line-height: 1.3;
   }
