@@ -283,7 +283,9 @@ body {
   box-shadow: 0 6px 18px -10px rgba(80, 60, 35, 0.28);
   font: 400 16.5px/1.6 'Newsreader';
   color: #3a352c;
-  text-align: center;
+  /* do lewej (jak w komunikatorach): naturalniej się czyta, a przy streamingu SSE
+     linia nie „skacze" przy każdym chunku (wyśrodkowanie przerysowywało całość) */
+  text-align: left;
   text-wrap: pretty;
   min-height: 24px;
 }
@@ -737,6 +739,10 @@ body {
 .safety-footer-sep {
   color: #d3c7b3;
 }
+/* warianty etykiet stopki: pełne na desktopie, skrócone na mobile (patrz @media) */
+.ftr-short {
+  display: none;
+}
 
 /* ---------- strony prawne (Regulamin / Polityka prywatności) ----------
    Reużywa ramki .card (ten sam wygląd co czat), a treść scrolluje się wewnątrz. */
@@ -975,28 +981,41 @@ body {
     padding: 16px 18px;
   }
 
-  /* (2) stopka bezpieczeństwa: zwarciejsze 2 linie zamiast dwóch „pełnowymiarowych".
-     Linia 1 = wymagane ujawnienie AI + „Potrzebujesz pomocy?"; akceptacja schodzi do
-     osobnej, mniejszej linijki (drobny druk), więc zajmuje wyraźnie mniej miejsca. */
+  /* (2→1) stopka bezpieczeństwa w JEDNEJ linii: ujawnienie AI dosłownie (wymóg
+     EU AI Act), a klauzula zgody skrócona do samych linków (.ftr-short). */
   .composer {
     padding: 11px 16px 12px;
   }
-  .safety-footer {
-    padding: 0 14px 5px;
-    font-size: 8.5px; /* drobny druk — pełna treść prawna, minimalny ślad na ekranie */
-    line-height: 1.25;
-  }
-  .safety-footer-line {
-    gap: 2px 5px;
-  }
-  /* separator „·” zbędny, gdy akceptacja jest w osobnej linijce */
-  .safety-footer-sep {
+  .ftr-full {
     display: none;
   }
+  .ftr-short {
+    display: inline;
+  }
+  .safety-footer {
+    padding: 0 12px 6px;
+    font-size: 8.5px; /* mieści całą linię też na 320px (iPhone SE/mini) */
+    line-height: 1.3;
+  }
+  .safety-footer-line {
+    flex-wrap: nowrap; /* trzymaj w jednej linii */
+    gap: 4px;
+    white-space: nowrap;
+  }
   .safety-footer-accept {
-    flex-basis: 100%;
-    text-align: center;
-    font-size: 8.5px;
     color: #b6a78f;
+  }
+
+  /* (3) na telefonie nie ma osi środkowej — dymki mogą być szersze (~3/4 szerokości
+     rozmowy zamiast 1/2). Desktop zostaje na 1/2 (linia dzieli „brzegi”). */
+  .row-her,
+  .row-him {
+    max-width: 78%;
+  }
+  .row-advisor {
+    width: 78%;
+  }
+  .row-advisor-center {
+    width: 90%;
   }
 }

@@ -21,12 +21,22 @@ export default function SafetyFooter() {
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
         >
-          Potrzebujesz pomocy?
+          {/* pełna etykieta na desktopie, skrót na mobile (jedna linia stopki) */}
+          <span className="ftr-full">Potrzebujesz pomocy?</span>
+          <span className="ftr-short">Pomoc</span>
         </button>
         <span className="safety-footer-sep" aria-hidden="true">·</span>
         <span className="safety-footer-accept">
-          Korzystając z Relvii, akceptujesz <a href="#regulamin">Regulamin</a> i{' '}
-          <a href="#polityka-prywatnosci">Politykę prywatności</a>.
+          {/* na desktopie pełna klauzula zgody; na mobile same linki (oszczędność miejsca) */}
+          <span className="ftr-full">Korzystając z Relvii, akceptujesz </span>
+          <a href="#regulamin">Regulamin</a>
+          <span className="ftr-full"> i </span>
+          <span className="ftr-short"> · </span>
+          <a href="#polityka-prywatnosci">
+            <span className="ftr-full">Politykę prywatności</span>
+            <span className="ftr-short">Prywatność</span>
+          </a>
+          <span className="ftr-full">.</span>
         </span>
       </div>
       {open && (
