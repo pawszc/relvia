@@ -45,14 +45,23 @@ export default function Composer({
   // auto-grow: po każdej zmianie treści ustaw wysokość = scrollHeight (do limitu),
   // powyżej limitu włącz scroll. Reset do 'auto' najpierw, by pole też się KURCZYŁO
   // (np. po wysłaniu, gdy text → '').
+  // Dodatkowo przeliczamy po doładowaniu webfontów (display=swap) i przy zmianie
+  // szerokości okna: inaczej pierwszy pomiar pada fontem zastępczym (niższe metryki),
+  // a po podmianie Hanken Grotesk jednowierszowy placeholder bywa przycięty od dołu.
   const taRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     const el = taRef.current;
     if (!el) return;
-    el.style.height = 'auto';
-    const next = Math.min(el.scrollHeight, COMPOSER_MAX_H);
-    el.style.height = `${next}px`;
-    el.style.overflowY = el.scrollHeight > COMPOSER_MAX_H ? 'auto' : 'hidden';
+    const fit = () => {
+      el.style.height = 'auto';
+      const next = Math.min(el.scrollHeight, COMPOSER_MAX_H);
+      el.style.height = `${next}px`;
+      el.style.overflowY = el.scrollHeight > COMPOSER_MAX_H ? 'auto' : 'hidden';
+    };
+    fit();
+    document.fonts?.ready.then(fit);
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
   }, [text]);
 
   return (

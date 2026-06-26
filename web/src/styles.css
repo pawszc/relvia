@@ -889,6 +889,9 @@ body {
   display: block;
   margin: 0;
   padding: 4px 0;
+  /* podłoga na jeden wiersz (1.45em + padding) — zapas na wydłużenia liter (j, p)
+     zanim JS przeliczy wysokość po doładowaniu webfontu; zapobiega przycięciu */
+  min-height: 30px;
   max-height: 132px;
   overflow-y: hidden;
 }
@@ -926,5 +929,41 @@ body {
   }
   .composer {
     flex-wrap: wrap;
+  }
+
+  /* (1) podtytuł nagłówka jest długi i `nowrap` — na telefonie wypycha klaster
+     awatarów poza krawędź i sam zostaje ucięty. Chowamy go; zostaje sam lockup. */
+  .brand-sub {
+    display: none;
+  }
+  /* daj tytułowi oddech, by awatary nie napierały */
+  .header {
+    padding: 0 16px;
+  }
+
+  /* (3) oś środkowa „dwa brzegi" to gest na duży ekran; na wąskim telefonie biegnie
+     przez pustą przestrzeń jak przypadkowa kreska. Zostają same dymki (lewo/prawo =
+     Ona/On) na spokojnych, delikatnie barwionych brzegach — bez ostrej linii. */
+  .channel-line {
+    display: none;
+  }
+
+  /* (3) empty-state opierał się na osi (dwie połówki) — bez linii składamy go w jedną
+     wyśrodkowaną kolumnę, żeby tekst nie „rozjeżdżał się" wokół niewidocznej osi. */
+  .empty-state {
+    flex-direction: column;
+    gap: 2px;
+    text-align: center;
+  }
+  .empty-left,
+  .empty-right {
+    width: 100%;
+    text-align: center;
+    padding: 0;
+  }
+
+  /* (4) mniej oddechu po bokach — telefon ma mało miejsca w poziomie */
+  .messages {
+    padding: 16px 18px;
   }
 }
