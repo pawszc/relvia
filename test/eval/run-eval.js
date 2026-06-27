@@ -28,9 +28,10 @@ if (process.env.ADVISOR !== 'anthropic') process.env.ADVISOR = 'anthropic';
 
 const advisor = require(path.join(ROOT, 'srv/advisor/anthropicAdvisor'));
 const { costUsd } = require(path.join(ROOT, 'srv/advisor/pricing'));
-const { activeModel } = require(path.join(ROOT, 'srv/advisor/models'));
+const { activeModel, decideModel, generateModel } = require(path.join(ROOT, 'srv/advisor/models'));
 const { scenarios } = require('./scenarios');
 const { judge, JUDGE_MODEL } = require('./judge');
+const { judgeLanguage, LANG_JUDGE_MODEL } = require('./language-judge');
 
 // ── argumenty ─────────────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
@@ -66,20 +67,25 @@ const sumUsage = (a, b) => ({
 });
 
 (async () => {
-  const model = activeModel();
+  const mDecide = decideModel();
+  const mGenerate = generateModel();
+  const sameModel = mDecide === mGenerate;
+  const modelLabel = sameModel ? mDecide : `decide=${mDecide} · generate=${mGenerate}`;
   const list = scenarios.filter(
     (s) => (!onlyCat || s.cat === onlyCat) && (!idSet || idSet.has(s.id)),
   );
 
-  console.log(`\n${C.bold}EVAL — doradca/reżyser: ${model} | sędzia: ${noJudge ? '(wyłączony)' : JUDGE_MODEL}${C.reset}`);
+  console.log(`\n${C.bold}EVAL — doradca/reżyser: ${modelLabel} | sędzia: ${noJudge ? '(wyłączony)' : JUDGE_MODEL} | język: ${noJudge ? '(wyłączony)' : LANG_JUDGE_MODEL}${C.reset}`);
   console.log(`${C.dim}scenariuszy: ${list.length} · ${new Date().toISOString()}${C.reset}\n`);
 
-  let haikuUsage = {}; // decide + generateReply (model aplikacji)
-  let opusUsage = {};  // judge
+  let decideUsage = {};   // warstwa decyzji (model: decide)
+  let generateUsage = {}; // warstwa generacji dymki (model: generate)
+  let opusUsage = {};      // sędzia treści + sędzia języka (Opus)
+  const langScores = [];   // { id, grammar, naturalness, clarity, issues }
   const results = [];
   const md = [];
   md.push(`# Raport eval — ${new Date().toISOString()}`);
-  md.push(`\nModel doradcy/reżysera: \`${model}\` · sędzia: \`${noJudge ? 'wyłączony' : JUDGE_MODEL}\` · scenariuszy: ${list.length}\n`);
+  md.push(`\nModel: \`${modelLabel}\` · sędzia treści: \`${noJudge ? 'wyłączony' : JUDGE_MODEL}\` · sędzia języka: \`${noJudge ? 'wyłączony' : LANG_JUDGE_MODEL}\` · scenariuszy: ${list.length}\n`);
 
   for (const s of list) {
     const history = buildHistory(s.history);
@@ -92,7 +98,7 @@ const sumUsage = (a, b) => ({
       results.push({ s, error: e.message });
       continue;
     }
-    if (decision.usage) haikuUsage = sumUsage(haikuUsage, decision.usage);
+    if (decision.usage) decideUsage = sumUsage(decideUsage, decision.usage);
 
     const type = decision.type;
     const typeOk = s.expect.includes(type);
@@ -106,16 +112,27 @@ const sumUsage = (a, b) => ({
     // treść dymki + sędzia
     let reply = null;
     let verdicts = [];
+    let lang = null;
     if (decision.shouldSpeak && s.rubric.length && !noJudge) {
       const r = await runReply(decision, history, ctx);
       reply = r.text;
-      if (r.usage) haikuUsage = sumUsage(haikuUsage, r.usage);
+      if (r.usage) generateUsage = sumUsage(generateUsage, r.usage);
       try {
         const j = await judge(history, reply, s.rubric);
         verdicts = j.verdicts;
         opusUsage = sumUsage(opusUsage, j.usage);
       } catch (e) {
         verdicts = [{ index: -1, pass: false, reason: `judge error: ${e.message}` }];
+      }
+      // pogłębiona ocena JĘZYKA (osobny sędzia) — na tej samej, realnej dymce
+      try {
+        const lj = await judgeLanguage(reply);
+        opusUsage = sumUsage(opusUsage, lj.usage);
+        lang = { id: s.id, grammar: lj.grammar, naturalness: lj.naturalness, clarity: lj.clarity, issues: lj.issues };
+        langScores.push(lang);
+      } catch (e) {
+        lang = { id: s.id, grammar: 0, naturalness: 0, clarity: 0, issues: [{ quote: '', problem: `lang-judge error: ${e.message}` }] };
+        langScores.push(lang);
       }
     } else if (decision.shouldSpeak && s.rubric.length === 0) {
       // typ wymaga mowy, ale brak rubryki (np. REGRESJA) — generujemy bez sędziego dla podglądu/kosztu pełnej tury? pomijamy, by nie palić tokenów
@@ -136,6 +153,12 @@ const sumUsage = (a, b) => ({
     for (const v of verdicts.filter((v) => !v.pass)) {
       console.log(`        ${C.red}✗${C.reset} ${C.dim}${s.rubric[v.index] || v.reason}${C.reset}\n          → ${v.reason}`);
     }
+    if (lang) {
+      const lo = Math.min(lang.grammar, lang.naturalness, lang.clarity);
+      const col = lo >= 4 ? C.green : lo >= 3 ? C.yellow : C.red;
+      console.log(`        ${col}język${C.reset} G${lang.grammar} N${lang.naturalness} Z${lang.clarity}${lang.issues.length ? `  ${C.red}usterki: ${lang.issues.length}${C.reset}` : ''}`);
+      for (const it of lang.issues) console.log(`          ${C.dim}· „${it.quote}" — ${it.problem}${C.reset}`);
+    }
 
     // markdown
     md.push(`\n### [${s.id}] ${s.cat} — ${s.desc}`);
@@ -144,6 +167,10 @@ const sumUsage = (a, b) => ({
     if (rubricTotal) {
       md.push(`- rubryka: **${rubricPass}/${rubricTotal}**`);
       for (const v of verdicts) md.push(`  - ${v.pass ? '✅' : '❌'} ${s.rubric[v.index] || ''} ${v.pass ? '' : `— _${v.reason}_`}`);
+    }
+    if (lang) {
+      md.push(`- język: **G${lang.grammar} N${lang.naturalness} Z${lang.clarity}**${lang.issues.length ? ` · usterki: ${lang.issues.length}` : ''}`);
+      for (const it of lang.issues) md.push(`  - ⚠ „${it.quote}" — _${it.problem}_`);
     }
     if (reply) md.push(`- dymka: > ${reply.replace(/\n+/g, ' ')}`);
   }
@@ -166,19 +193,40 @@ const sumUsage = (a, b) => ({
     md.push(`| ${cat} | ${typePass}/${rs.length} | ${rubricStr} | ${fp} |`);
   }
 
+  // ── JĘZYK (agregat) ──────────────────────────────────────────────────────────
+  if (langScores.length) {
+    const avg = (k) => (langScores.reduce((a, r) => a + (r[k] || 0), 0) / langScores.length);
+    const g = avg('grammar'), n = avg('naturalness'), z = avg('clarity');
+    const overall = (g + n + z) / 3;
+    const issues = langScores.reduce((a, r) => a + r.issues.length, 0);
+    const belowBar = langScores.filter((r) => Math.min(r.grammar, r.naturalness, r.clarity) < 4).length;
+    const col = overall >= 4.5 ? C.green : overall >= 3.8 ? C.yellow : C.red;
+    console.log(`\n${C.bold}── JĘZYK (sędzia ${LANG_JUDGE_MODEL}, n=${langScores.length}) ──${C.reset}`);
+    console.log(`gramatyka ${g.toFixed(2)} · naturalność ${n.toFixed(2)} · zrozumiałość ${z.toFixed(2)}  →  ${col}średnia ${overall.toFixed(2)}/5${C.reset}`);
+    console.log(`dymek poniżej progu (min<4): ${belowBar}/${langScores.length} · łącznie usterek: ${issues}`);
+    md.push(`\n## Jakość języka (sędzia \`${LANG_JUDGE_MODEL}\`, n=${langScores.length})\n`);
+    md.push(`| gramatyka | naturalność | zrozumiałość | **średnia** | dymek min<4 | usterek |`);
+    md.push(`|---|---|---|---|---|---|`);
+    md.push(`| ${g.toFixed(2)} | ${n.toFixed(2)} | ${z.toFixed(2)} | **${overall.toFixed(2)}/5** | ${belowBar}/${langScores.length} | ${issues} |`);
+  }
+
   // ── koszt ────────────────────────────────────────────────────────────────────
-  const haikuCost = costUsd(haikuUsage, model);
+  const decideCost = costUsd(decideUsage, mDecide);
+  const generateCost = costUsd(generateUsage, mGenerate);
+  const appCost = decideCost + generateCost;
   const opusCost = costUsd(opusUsage, JUDGE_MODEL);
-  const fmtTok = (u) => `in ${u.inputTokens || 0} / out ${u.outputTokens || 0} / cacheR ${u.cacheReadTokens || 0}`;
+  const fmtTok = (u) => `in ${u.inputTokens || 0} / out ${u.outputTokens || 0} / cacheR ${u.cacheReadTokens || 0} / cacheW ${u.cacheCreationTokens || 0}`;
   console.log(`\n${C.bold}── KOSZT ──────────────────────────────────────${C.reset}`);
-  console.log(`doradca+reżyser (${model}): ${fmtTok(haikuUsage)}  →  $${haikuCost.toFixed(4)}`);
-  console.log(`sędzia (${JUDGE_MODEL}):     ${fmtTok(opusUsage)}  →  $${opusCost.toFixed(4)}`);
-  console.log(`${C.bold}RAZEM: $${(haikuCost + opusCost).toFixed(4)}${C.reset}\n`);
+  console.log(`decide   (${mDecide}): ${fmtTok(decideUsage)}  →  $${decideCost.toFixed(4)}`);
+  console.log(`generate (${mGenerate}): ${fmtTok(generateUsage)}  →  $${generateCost.toFixed(4)}`);
+  console.log(`${C.bold}aplikacja (decide+generate): $${appCost.toFixed(4)}${C.reset}`);
+  console.log(`${C.dim}sędziowie (${JUDGE_MODEL}, treść+język): ${fmtTok(opusUsage)} → $${opusCost.toFixed(4)} [poza kosztem produkcji]${C.reset}\n`);
 
   md.push(`\n## Koszt\n`);
-  md.push(`- doradca+reżyser \`${model}\`: ${fmtTok(haikuUsage)} → **$${haikuCost.toFixed(4)}**`);
-  md.push(`- sędzia \`${JUDGE_MODEL}\`: ${fmtTok(opusUsage)} → **$${opusCost.toFixed(4)}**`);
-  md.push(`- **RAZEM: $${(haikuCost + opusCost).toFixed(4)}**`);
+  md.push(`- decide \`${mDecide}\`: ${fmtTok(decideUsage)} → **$${decideCost.toFixed(4)}**`);
+  md.push(`- generate \`${mGenerate}\`: ${fmtTok(generateUsage)} → **$${generateCost.toFixed(4)}**`);
+  md.push(`- **aplikacja (decide+generate): $${appCost.toFixed(4)}**`);
+  md.push(`- _sędziowie \`${JUDGE_MODEL}\` (treść+język): ${fmtTok(opusUsage)} → $${opusCost.toFixed(4)} — poza kosztem produkcji_`);
 
   fs.writeFileSync(path.join(__dirname, 'last-report.md'), md.join('\n') + '\n', 'utf8');
   console.log(`${C.dim}Raport: test/eval/last-report.md${C.reset}`);

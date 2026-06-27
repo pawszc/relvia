@@ -24,9 +24,27 @@ function activeModel() {
   return m && MODELS[m] ? m : DEFAULT_MODEL;
 }
 
+/**
+ * Model warstwy DECYZJI (reżyser). Z ADVISOR_DECIDE_MODEL; fallback → activeModel().
+ * Pozwala rozdzielić modele per warstwa (tani decide / mocniejszy generate).
+ */
+function decideModel() {
+  const m = process.env.ADVISOR_DECIDE_MODEL;
+  return m && MODELS[m] ? m : activeModel();
+}
+
+/**
+ * Model warstwy GENERACJI (treść dymki — czytana przez parę). Z ADVISOR_GENERATE_MODEL;
+ * fallback → activeModel(). Tu warto dać mocniejszy model (jakość polszczyzny).
+ */
+function generateModel() {
+  const m = process.env.ADVISOR_GENERATE_MODEL;
+  return m && MODELS[m] ? m : activeModel();
+}
+
 /** Stawki dla danego modelu (fallback: aktywny → domyślny). */
 function ratesFor(model) {
   return MODELS[model] || MODELS[activeModel()] || MODELS[DEFAULT_MODEL];
 }
 
-module.exports = { MODELS, DEFAULT_MODEL, activeModel, ratesFor };
+module.exports = { MODELS, DEFAULT_MODEL, activeModel, decideModel, generateModel, ratesFor };
