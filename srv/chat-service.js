@@ -136,6 +136,13 @@ module.exports = function (srv) {
     }
 
     await UPDATE(Conversations).set(patch).where({ ID: conversationId });
+
+    // utrwal łączny koszt także po turach WAIT (sam decide, bez logUsage); po
+    // UPDATE liczniki decide są już aktualne. Speaking-tury domkną to w logUsage.
+    if (decision.usage) {
+      const total = await conversationCostUsd(conversationId);
+      await UPDATE(Conversations).set({ costUsd: total }).where({ ID: conversationId });
+    }
   }
 
   async function nextSeq(conversationId) {
@@ -158,18 +165,11 @@ module.exports = function (srv) {
     LOG.info(
       `wiadomość ${advisorId} (konw. ${conversationId}) [${model}]: in=${c.inputTokens} out=${c.outputTokens} cacheRead=${c.cacheReadTokens} cacheCreate=${c.cacheCreationTokens} ~$${costUsd(c, model).toFixed(6)}`,
     );
-    const agg = await SELECT.one
-      .from(Messages)
-      .columns(
-        'sum(inputTokens) as inputTokens',
-        'sum(outputTokens) as outputTokens',
-        'sum(cacheReadTokens) as cacheReadTokens',
-        'sum(cacheCreationTokens) as cacheCreationTokens',
-      )
-      .where({ conversation_ID: conversationId });
-    LOG.info(
-      `konwersacja ${conversationId} łącznie [${model}]: in=${(agg && agg.inputTokens) || 0} out=${(agg && agg.outputTokens) || 0} cacheRead=${(agg && agg.cacheReadTokens) || 0} cacheCreate=${(agg && agg.cacheCreationTokens) || 0} ~$${costUsd(agg).toFixed(6)}`,
-    );
+    // „łącznie" = generacja + DECYZJA, każda swoim modelem (wcześniej sumowało tylko
+    // generację → zaniżenie o ~połowę). Utrwalamy też koszt na konwersacji.
+    const total = await conversationCostUsd(conversationId);
+    LOG.info(`konwersacja ${conversationId} łącznie (decide ${decideModel()} + generate ${generateModel()}) ~$${total.toFixed(6)}`);
+    await UPDATE(Conversations).set({ costUsd: total }).where({ ID: conversationId });
   }
 
   /**
@@ -182,14 +182,12 @@ module.exports = function (srv) {
     const c = await SELECT.one
       .from(Conversations)
       .columns(
-        'model',
         'decideInputTokens',
         'decideOutputTokens',
         'decideCacheReadTokens',
         'decideCacheCreationTokens',
       )
       .where({ ID: conversationId });
-    const model = (c && c.model) || activeModel();
     const g = await SELECT.one
       .from(Messages)
       .columns(
@@ -211,7 +209,9 @@ module.exports = function (srv) {
       cacheReadTokens: (c && c.decideCacheReadTokens) || 0,
       cacheCreationTokens: (c && c.decideCacheCreationTokens) || 0,
     };
-    return costUsd(gen, model) + costUsd(dec, model);
+    // wycena PER WARSTWA: generacja modelem generate (np. Sonnet), decyzja modelem
+    // decide (np. Haiku). Inaczej pod model-splitem budżet niedoszacowałby Sonneta.
+    return costUsd(gen, generateModel()) + costUsd(dec, decideModel());
   }
 
   /** Dopisuje zdarzenie zużycia do ledgera (zasila globalny limit 24h). 0 = pomijamy szum? nie — i tak sumujemy. */
@@ -221,7 +221,9 @@ module.exports = function (srv) {
       ID: cds.utils.uuid(),
       conversation_ID: conversationId,
       layer,
-      model: activeModel(),
+      // model warstwy: globalCostLast24hUsd grupuje po `model` i wycenia per model,
+      // więc generate (Sonnet) musi być zapisany jako Sonnet, nie jako activeModel.
+      model: layer === 'decide' ? decideModel() : generateModel(),
       ...usageColumns(usage),
     });
   }
@@ -668,14 +670,12 @@ module.exports = function (srv) {
     const conv = await SELECT.one
       .from(Conversations)
       .columns(
-        'model',
         'decideInputTokens',
         'decideOutputTokens',
         'decideCacheReadTokens',
         'decideCacheCreationTokens',
       )
       .where({ ID: cid });
-    const model = (conv && conv.model) || activeModel();
 
     // GENERACJA (dymki doradcy) — suma po wiadomościach ADVISOR
     const g = await SELECT.one
@@ -702,8 +702,8 @@ module.exports = function (srv) {
       cacheReadTokens: (conv && conv.decideCacheReadTokens) || 0,
       cacheCreationTokens: (conv && conv.decideCacheCreationTokens) || 0,
     };
-    const generationCostUsd = costUsd(gen, model);
-    const decideCostUsd = costUsd(dec, model);
+    const generationCostUsd = costUsd(gen, generateModel());
+    const decideCostUsd = costUsd(dec, decideModel());
 
     return {
       // generacja
@@ -717,8 +717,10 @@ module.exports = function (srv) {
       decideOutputTokens: dec.outputTokens,
       decideCacheReadTokens: dec.cacheReadTokens,
       decideCacheCreationTokens: dec.cacheCreationTokens,
-      // model + koszty (rozbicie + suma)
-      model,
+      // modele per warstwa + koszty (rozbicie + suma)
+      model: generateModel(), // headline = model generacji (zgodność wstecz)
+      decideModel: decideModel(),
+      generateModel: generateModel(),
       generationCostUsd,
       decideCostUsd,
       costUsd: generationCostUsd + decideCostUsd,

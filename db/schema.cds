@@ -43,6 +43,7 @@ entity Conversations : cuid, managed {
   escalationStreak   : Integer default 0;      // rozpęd kłótni (krok 3)
   lastActivityAt     : Timestamp;              // heartbeat (krok 4)
   model              : String;                 // model AI użyty do generacji (np. claude-haiku-4-5)
+  costUsd            : Decimal default 0;       // utrwalony łączny koszt rozmowy (decide+generate) — aktualizowany co turę
   lastComposerHint   : String(160);            // ostatnia podpowiedź do pola — by decide jej nie powtarzał
   budgetReached      : Boolean default false;  // osiągnięto budżet konwersacji → łagodny read-only (config.js)
 

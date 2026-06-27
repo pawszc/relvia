@@ -116,8 +116,10 @@ service ChatService @(path: '/chat') {
     decideOutputTokens        : Integer;
     decideCacheReadTokens     : Integer;
     decideCacheCreationTokens : Integer;
-    // model + koszty (rozbicie + suma) w USD wg cennika tego modelu
-    model                     : String;
+    // modele per warstwa (pod model-split) + koszty (rozbicie + suma) w USD
+    model                     : String; // headline = model generacji (zgodność wstecz)
+    decideModel               : String;
+    generateModel             : String;
     generationCostUsd         : Decimal;
     decideCostUsd             : Decimal;
     costUsd                   : Decimal;
