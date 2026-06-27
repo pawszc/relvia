@@ -76,7 +76,7 @@ test('cache: breakpoint trafia na OSTATNIĄ wiadomość, wcześniejsze nietknię
   assert.ok(Array.isArray(last.content), 'ostatnia w formie bloków');
   assert.equal(last.content[0].type, 'text');
   assert.equal(last.content[0].text, '[On]: druga', 'treść zachowana');
-  assert.deepEqual(last.content[0].cache_control, { type: 'ephemeral' }, 'domyślny TTL 5m');
+  assert.deepEqual(last.content[0].cache_control, { type: 'ephemeral', ttl: '1h' }, 'domyślny TTL 1h');
   assert.equal(last.role, 'user', 'rola zachowana');
 });
 

@@ -37,7 +37,10 @@ const CONFIG = {
   //   '5m' → zapis 1,25×, gubi cache po >5 min ciszy (domyślny),
   //   '1h' → zapis 2×, przeżywa dłuższe pauzy „z rąk do rąk".
   cacheEnabled: bool(process.env.ADVISOR_CACHE_ENABLED, true),
-  cacheTtl: process.env.ADVISOR_CACHE_TTL === '1h' ? '1h' : '5m',
+  // Domyślnie '1h': ludzie w rozmowie odpowiadają wolno (często >5 min), więc 5-min
+  // cache wygasał i płaciliśmy drogie re-zapisy. 1h przeżywa pauzy „z rąk do rąk".
+  // Nadpisywalne: ADVISOR_CACHE_TTL=5m wraca do krótszego.
+  cacheTtl: process.env.ADVISOR_CACHE_TTL === '5m' ? '5m' : '1h',
 
   // --- RATE LIMIT (ochrona publicznego endpointu) ---------------------------
   // Minimalny odstęp między wiadomościami w obrębie jednej konwersacji.

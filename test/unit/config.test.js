@@ -43,7 +43,7 @@ test('config: domyślne progi ochrony (budżet $0.50, cache 5m, flagi ON, rate 1
   assert.equal(c.conversationBudgetUsd, 0.5, 'domyślny budżet per-sesja $0.50');
   assert.equal(c.budgetEnabled, true);
   assert.equal(c.cacheEnabled, true);
-  assert.equal(c.cacheTtl, '5m', 'domyślny TTL = 5m');
+  assert.equal(c.cacheTtl, '1h', 'domyślny TTL = 1h (pasuje do wolnego tempa rozmów)');
   assert.equal(c.rateLimitEnabled, true);
   assert.equal(c.rateLimitMinIntervalMs, 800);
   assert.equal(c.globalBudgetEnabled, true, 'globalny limit domyślnie ON');
@@ -94,9 +94,9 @@ test('config: env nadpisuje budżet, TTL i flagi', () => {
   assert.equal(c.rateLimitMinIntervalMs, 3000);
 });
 
-test('config: nieznany TTL degraduje do 5m (tylko 5m/1h dozwolone)', () => {
-  const c = freshConfig({ ADVISOR_CACHE_TTL: 'banana' });
-  assert.equal(c.cacheTtl, '5m');
+test('config: TTL — tylko 5m/1h; nieznany degraduje do domyślnego 1h', () => {
+  assert.equal(freshConfig({ ADVISOR_CACHE_TTL: '5m' }).cacheTtl, '5m', 'jawne 5m respektowane');
+  assert.equal(freshConfig({ ADVISOR_CACHE_TTL: 'banana' }).cacheTtl, '1h', 'nieznany → domyślny 1h');
 });
 
 test('config: śmieciowy budżet → domyślny 0.50 (parser num odporny)', () => {

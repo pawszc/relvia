@@ -17,7 +17,7 @@ const {
   FEELING_PROBE,
   EVENT_DOOR_BANK,
 } = require('./decisionRules');
-const { activeModel } = require('./models');
+const { activeModel, decideModel, generateModel } = require('./models');
 const CONFIG = require('./config');
 
 // Krótka instrukcja sterująca tonem/celem dymki wg typu decyzji.
@@ -194,12 +194,17 @@ function toMessages(history, ctx) {
  * unieważnia cache. Rusza dopiero gdy prefiks ≥ minimum modelu (Haiku: 4096 tok)
  * — czyli tam, gdzie koszt rośnie kwadratowo. TTL z CONFIG.cacheTtl.
  */
+/** cache_control wg CONFIG.cacheTtl: '1h' przeżywa dłuższe pauzy „z rąk do rąk"
+ *  (droższy zapis, ale nie wygasa po 5 min — pasuje do tempa ludzi w rozmowie). */
+function cacheControl() {
+  return CONFIG.cacheTtl === '1h' ? { type: 'ephemeral', ttl: '1h' } : { type: 'ephemeral' };
+}
+
 function withCacheBreakpoint(messages) {
   if (!CONFIG.cacheEnabled || messages.length === 0) return messages;
   const out = messages.slice();
   const last = out[out.length - 1];
-  const cache_control =
-    CONFIG.cacheTtl === '1h' ? { type: 'ephemeral', ttl: '1h' } : { type: 'ephemeral' };
+  const cache_control = cacheControl();
   out[out.length - 1] = {
     role: last.role,
     content: [{ type: 'text', text: last.content, cache_control }],
@@ -274,7 +279,7 @@ async function modelDecide(history, state, context) {
     `eskalacja=${state.escalationStreak || 0}; zaparkowane=${parked}. ${genderMap}${prevHint}`;
 
   const resp = await client.messages.create({
-    model: activeModel(),
+    model: decideModel(),
     max_tokens: CONFIG.decideMaxTokens,
     thinking: { type: 'disabled' },
     system: DECIDE_SYSTEM,
@@ -440,7 +445,7 @@ module.exports = {
     // System = stała persona (cache) + krótka instrukcja sterująca wg decyzji.
     let steer = decision && DECISION_STEER[decision.type];
     if (decision && decision.type === 'INTERVENE') steer = interveneSteer(decision.escalationStreak);
-    const system = [{ type: 'text', text: PERSONA, cache_control: { type: 'ephemeral' } }];
+    const system = [{ type: 'text', text: PERSONA, cache_control: cacheControl() }];
     system.push({ type: 'text', text: nameSteer(context) }); // jak zwracać się do pary
     const reg = decision && audienceSteer(decision, history); // rejestr empatii wg adresata
     if (reg) system.push({ type: 'text', text: reg });
@@ -456,7 +461,10 @@ module.exports = {
     // ignorował binding w system[] — dalej pogłębiał bieżącego mówcę, mimo decyzji ASK_OTHER do
     // drugiej strony (rozjazd: markery UI mówiły „Ona", tekst trzymał się „Jego” po męsku).
     // Dyrektywa jako ostatni głos „reżysera" zwykle przeważa. null dla SAFETY_STOP/INTERVENE.
-    const messages = toMessages(history, context);
+    // (a) CACHE HISTORII też w generacji: breakpoint na ostatniej wiadomości historii
+    // → stały prefiks (PERSONA + dotychczasowe wiadomości) płaci ~0,1× zamiast 1×.
+    // Dynamiczny `bind` zostaje PO breakpoincie, więc nie unieważnia cache.
+    const messages = withCacheBreakpoint(toMessages(history, context));
     if (bind) {
       messages.push({
         role: 'user',
@@ -466,7 +474,7 @@ module.exports = {
 
     const stream = client.messages.stream(
       {
-        model: activeModel(),
+        model: generateModel(),
         max_tokens: CONFIG.replyMaxTokens,
         // Czat ma odpowiadać szybko — wyłączamy rozszerzone myślenie, by pierwszy
         // token pojawiał się od razu. (Można później dostroić jakość przez effort.)

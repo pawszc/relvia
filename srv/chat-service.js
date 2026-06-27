@@ -10,7 +10,7 @@
 const cds = require('@sap/cds');
 const advisor = require('./advisor/advisor');
 const { costUsd } = require('./advisor/pricing');
-const { activeModel } = require('./advisor/models');
+const { activeModel, decideModel, generateModel } = require('./advisor/models');
 const CONFIG = require('./advisor/config');
 const { checkAndRecord } = require('./rate-limit');
 const { sanitizeAdvisor } = require('./sanitize');
@@ -131,7 +131,7 @@ module.exports = function (srv) {
       patch.decideCacheReadTokens = { '+=': u.cacheReadTokens || 0 };
       patch.decideCacheCreationTokens = { '+=': u.cacheCreationTokens || 0 };
       LOG.info(
-        `decyzja (konw. ${conversationId}) [${activeModel()}]: in=${u.inputTokens || 0} out=${u.outputTokens || 0} ~$${costUsd(u).toFixed(6)}`,
+        `decyzja (konw. ${conversationId}) [${decideModel()}]: in=${u.inputTokens || 0} out=${u.outputTokens || 0} ~$${costUsd(u, decideModel()).toFixed(6)}`,
       );
     }
 
@@ -154,9 +154,9 @@ module.exports = function (srv) {
   /** Loguje zużycie tokenów: tej wiadomości + zagregowane dla całej konwersacji. */
   async function logUsage(conversationId, advisorId, usage) {
     const c = usageColumns(usage);
-    const model = activeModel();
+    const model = generateModel(); // wiadomość doradcy = warstwa generacji
     LOG.info(
-      `wiadomość ${advisorId} (konw. ${conversationId}) [${model}]: in=${c.inputTokens} out=${c.outputTokens} cacheRead=${c.cacheReadTokens} cacheCreate=${c.cacheCreationTokens} ~$${costUsd(c).toFixed(6)}`,
+      `wiadomość ${advisorId} (konw. ${conversationId}) [${model}]: in=${c.inputTokens} out=${c.outputTokens} cacheRead=${c.cacheReadTokens} cacheCreate=${c.cacheCreationTokens} ~$${costUsd(c, model).toFixed(6)}`,
     );
     const agg = await SELECT.one
       .from(Messages)
