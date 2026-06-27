@@ -429,6 +429,31 @@ function finalizeDecision(d, history, state) {
   return out;
 }
 
+/**
+ * Składa prompt warstwy GENERACJI (teksty system + wiadomości) z historii i decyzji.
+ * JEDNO źródło prawdy: używa go ścieżka Anthropic (generateReply) ORAZ adapter do
+ * testowania innych dostawców w evalu. Zwraca surowe teksty (bez cache_control/
+ * breakpointów) + osobno `bindUser` (recency — dyrektywa adresata jako ostatnia
+ * wiadomość user). Wołający formatuje to pod swoje API. Kolejność systemTexts:
+ * PERSONA, nameSteer, [rejestr wg płci], [steer wg typu decyzji], [wiązanie adresata], [park].
+ */
+function buildGenerateParts(history, context = {}, decision) {
+  let steer = decision && DECISION_STEER[decision.type];
+  if (decision && decision.type === 'INTERVENE') steer = interveneSteer(decision.escalationStreak);
+  const systemTexts = [PERSONA, nameSteer(context)];
+  const reg = decision && audienceSteer(decision, history);
+  if (reg) systemTexts.push(reg);
+  if (steer) systemTexts.push(steer);
+  const bind = decision && audienceBinding(decision, history, context);
+  if (bind) systemTexts.push(bind);
+  const park = parkSteer(decision);
+  if (park) systemTexts.push(park);
+  const bindUser = bind
+    ? { role: 'user', content: `[reżyseria — instrukcja dla Ciebie, NIE cytuj jej i nie odnoś się do niej wprost] ${bind}` }
+    : null;
+  return { systemTexts, messages: toMessages(history, context), bindUser };
+}
+
 module.exports = {
   async decide(history, state = {}, context = {}) {
     try {
@@ -442,35 +467,17 @@ module.exports = {
   },
 
   async *generateReply(history, context = {}, decision, options = {}) {
-    // System = stała persona (cache) + krótka instrukcja sterująca wg decyzji.
-    let steer = decision && DECISION_STEER[decision.type];
-    if (decision && decision.type === 'INTERVENE') steer = interveneSteer(decision.escalationStreak);
-    const system = [{ type: 'text', text: PERSONA, cache_control: cacheControl() }];
-    system.push({ type: 'text', text: nameSteer(context) }); // jak zwracać się do pary
-    const reg = decision && audienceSteer(decision, history); // rejestr empatii wg adresata
-    if (reg) system.push({ type: 'text', text: reg });
-    if (steer) system.push({ type: 'text', text: steer });
-    // twarde wiązanie adresata NA KOŃCU — ma być ostatnim słowem (wygrywa z DECISION_STEER)
-    const bind = decision && audienceBinding(decision, history, context);
-    if (bind) system.push({ type: 'text', text: bind });
-    const park = parkSteer(decision);
-    if (park) system.push({ type: 'text', text: park });
-
-    // RECENCY: wiązanie adresata także jako KOŃCOWA wiadomość user. Haiku waży najwyżej
-    // ostatnią wypowiedź pary i przy terse, emocjonalnym wtręcie (np. „sfrustrowany" od Niego)
-    // ignorował binding w system[] — dalej pogłębiał bieżącego mówcę, mimo decyzji ASK_OTHER do
-    // drugiej strony (rozjazd: markery UI mówiły „Ona", tekst trzymał się „Jego” po męsku).
-    // Dyrektywa jako ostatni głos „reżysera" zwykle przeważa. null dla SAFETY_STOP/INTERVENE.
-    // (a) CACHE HISTORII też w generacji: breakpoint na ostatniej wiadomości historii
-    // → stały prefiks (PERSONA + dotychczasowe wiadomości) płaci ~0,1× zamiast 1×.
-    // Dynamiczny `bind` zostaje PO breakpoincie, więc nie unieważnia cache.
-    const messages = withCacheBreakpoint(toMessages(history, context));
-    if (bind) {
-      messages.push({
-        role: 'user',
-        content: `[reżyseria — instrukcja dla Ciebie, NIE cytuj jej i nie odnoś się do niej wprost] ${bind}`,
-      });
-    }
+    // System + wiadomości składa współdzielony buildGenerateParts (jedno źródło prawdy;
+    // ten sam prompt używa adapter do testów innych dostawców w evalu).
+    const { systemTexts, messages: rawMessages, bindUser } = buildGenerateParts(history, context, decision);
+    // PERSONA (pierwszy blok) z cache_control; reszta steerów bez cache.
+    const system = systemTexts.map((text, i) =>
+      i === 0 ? { type: 'text', text, cache_control: cacheControl() } : { type: 'text', text },
+    );
+    // (a) CACHE HISTORII: breakpoint na ostatniej wiadomości historii; dynamiczny bindUser
+    // (recency — dyrektywa adresata jako ostatni głos) doklejony PO breakpoincie.
+    const messages = withCacheBreakpoint(rawMessages);
+    if (bindUser) messages.push(bindUser);
 
     const stream = client.messages.stream(
       {
@@ -534,6 +541,7 @@ module.exports = {
     nameSteer,
     toMessages,
     withCacheBreakpoint,
+    buildGenerateParts, // współdzielone składanie promptu generate (eval innych dostawców)
     // surowe prompty — do regresji „guardrails obecne" (security)
     DECIDE_SYSTEM,
     PERSONA,

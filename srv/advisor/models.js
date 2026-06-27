@@ -14,6 +14,9 @@ const MODELS = {
   'claude-opus-4-7': { label: 'Opus 4.7', input: 5, output: 25, cacheRead: 0.5, cacheCreation: 6.25 },
   'claude-opus-4-8': { label: 'Opus 4.8', input: 5, output: 25, cacheRead: 0.5, cacheCreation: 6.25 },
   'claude-fable-5': { label: 'Fable 5', input: 10, output: 50, cacheRead: 1.0, cacheCreation: 12.5 },
+  // Nie-Anthropic — TYLKO do porównań w evalu (cross-provider). Stawki /1M wg cennika
+  // dostawcy (27.06.2026). OpenAI: brak premii za zapis cache → cacheCreation ≈ input.
+  'gpt-5-mini': { label: 'GPT-5 mini (OpenAI)', input: 0.25, output: 2, cacheRead: 0.025, cacheCreation: 0.25 },
 };
 
 const DEFAULT_MODEL = 'claude-haiku-4-5';

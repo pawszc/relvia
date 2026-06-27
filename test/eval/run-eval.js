@@ -33,6 +33,11 @@ const { scenarios } = require('./scenarios');
 const { judge, JUDGE_MODEL } = require('./judge');
 const { judgeLanguage, LANG_JUDGE_MODEL } = require('./language-judge');
 
+// Warstwa GENERACJI może iść innym dostawcą (porównania cross-provider). Decide
+// zostaje na Anthropic (advisor.decide). ADVISOR_GENERATE_PROVIDER=openai → GPT-5 itp.
+const genProvider = process.env.ADVISOR_GENERATE_PROVIDER || 'anthropic';
+const genAdvisor = genProvider === 'openai' ? require('./openai-generate') : advisor;
+
 // ── argumenty ─────────────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
 const onlyCat = (args.find((a) => a.startsWith('--only=')) || '').split('=')[1];
@@ -52,7 +57,7 @@ function buildHistory(rows) {
 async function runReply(decision, history, ctx) {
   let acc = '';
   let usage = {};
-  for await (const ev of advisor.generateReply(history, ctx, decision)) {
+  for await (const ev of genAdvisor.generateReply(history, ctx, decision)) {
     if (ev.type === 'delta') acc += ev.text;
     if (ev.type === 'end') { acc = ev.text || acc; usage = ev.usage || {}; }
   }
