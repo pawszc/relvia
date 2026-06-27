@@ -32,13 +32,16 @@ module.exports = {
     const messages = [{ role: 'system', content: system }, ...rawMessages];
     if (bindUser) messages.push(bindUser);
 
-    const resp = await client.chat.completions.create({
+    const params = {
       model: generateModel(),
       messages,
       max_completion_tokens: CONFIG.replyMaxTokens,
-      reasoning_effort: REASONING,
       // brak temperature — modele rozumujące GPT-5 akceptują tylko domyślną
-    });
+    };
+    // reasoning_effort TYLKO dla modeli rozumujących; nie-rozumujące (gpt-5-chat,
+    // gpt-4.1) odrzucą ten parametr → ADVISOR_OPENAI_REASONING=none go pomija.
+    if (REASONING && REASONING !== 'none') params.reasoning_effort = REASONING;
+    const resp = await client.chat.completions.create(params);
 
     const text = (resp.choices && resp.choices[0] && resp.choices[0].message.content) || '';
     const u = resp.usage || {};

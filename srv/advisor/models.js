@@ -17,6 +17,8 @@ const MODELS = {
   // Nie-Anthropic — TYLKO do porównań w evalu (cross-provider). Stawki /1M wg cennika
   // dostawcy (27.06.2026). OpenAI: brak premii za zapis cache → cacheCreation ≈ input.
   'gpt-5-mini': { label: 'GPT-5 mini (OpenAI)', input: 0.25, output: 2, cacheRead: 0.025, cacheCreation: 0.25 },
+  'gpt-5-chat-latest': { label: 'GPT-5 chat (OpenAI, nie-rozum.)', input: 1.25, output: 10, cacheRead: 0.125, cacheCreation: 1.25 },
+  'gpt-4.1': { label: 'GPT-4.1 (OpenAI, nie-rozum.)', input: 2, output: 8, cacheRead: 0.5, cacheCreation: 2 },
 };
 
 const DEFAULT_MODEL = 'claude-haiku-4-5';
