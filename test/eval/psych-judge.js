@@ -18,8 +18,10 @@ i GŁĘBIĘ TERAPEUTYCZNĄ jednej wypowiedzi doradcy — NIE poprawność język
 proceduralne. Pytanie nadrzędne: czy ta wypowiedź sprawia, że osoba poczułaby się naprawdę
 usłyszana i zrozumiana, i czy realnie posuwa proces?
 
-Oceń 4 wymiary w skali 1–5 (5 = poziom bardzo dobrego terapeuty; 3 = poprawne, ale powierzchowne;
-1 = chybione lub puste):
+Oceń 6 wymiarów w skali 1–5 (5 = poziom bardzo dobrego terapeuty; 3 = poprawne, ale powierzchowne;
+1 = chybione lub puste).
+
+GŁĘBIA / TRAFNOŚĆ:
 - dostrojenie: czy TRAFNIE odczytuje i odzwierciedla to, co osoba NAPRAWDĘ czuje/przeżywa
   (pod słowami), zamiast odbić powierzchowne lub nie na temat.
 - wnikliwosc: czy wnosi nietrywialne zrozumienie — nazywa potrzebę, lęk, wzorzec, sedno —
@@ -28,6 +30,13 @@ Oceń 4 wymiary w skali 1–5 (5 = poziom bardzo dobrego terapeuty; 3 = poprawne
   (pogłębia, zaprasza), a nie zamyka, spłyca ani odbiega.
 - cieplo: czy brzmi jak ktoś, komu można zaufać — ciepło, bez oceniania, bez protekcjonalności
   i bez terapeutycznego żargonu „na pokaz”.
+
+STYL / ODBIÓR (oceniaj NIEZALEŻNIE od głębi — wypowiedź może być mądra, a brzmieć jak AI):
+- komunikatywnosc: czy łatwo „wchodzi" — przystępny, prosty język; TRAFNA długość i tempo
+  (nie przegadane, nie eseistyczne, nie przeładowane); bez żargonu; odbiorca od razu czuje sedno.
+- ludzkiTon: czy brzmi jak realny, ciepły CZŁOWIEK, a nie AI — naturalny rytm i konkret;
+  BEZ szablonowych otwieraczy („Słyszę, że…", „To brzmi, jakby…", „Rozumiem, że…"), bez nadmiernej
+  struktury i grzecznościowego wypełniacza, bez „terapeutycznego automatu”. Karz schematyczność.
 
 Dodatkowo:
 - generic: true, jeśli wypowiedź brzmi jak uniwersalny, wymienny frazes (mógłby pasować do
@@ -45,10 +54,12 @@ const SCHEMA = {
     wnikliwosc: { type: 'integer' },
     ruch: { type: 'integer' },
     cieplo: { type: 'integer' },
+    komunikatywnosc: { type: 'integer' },
+    ludzkiTon: { type: 'integer' },
     generic: { type: 'boolean' },
     weakness: { type: 'string' },
   },
-  required: ['dostrojenie', 'wnikliwosc', 'ruch', 'cieplo', 'generic', 'weakness'],
+  required: ['dostrojenie', 'wnikliwosc', 'ruch', 'cieplo', 'komunikatywnosc', 'ludzkiTon', 'generic', 'weakness'],
 };
 
 const ROLE_LABEL = { HER: 'kobieta', HIM: 'mężczyzna', TOGETHER: 'oboje', ADVISOR: 'doradca' };
@@ -61,7 +72,7 @@ function parse(text) {
   try {
     return JSON.parse(t);
   } catch {
-    return { dostrojenie: 0, wnikliwosc: 0, ruch: 0, cieplo: 0, generic: true, weakness: 'nieparsowalny werdykt' };
+    return { dostrojenie: 0, wnikliwosc: 0, ruch: 0, cieplo: 0, komunikatywnosc: 0, ludzkiTon: 0, generic: true, weakness: 'nieparsowalny werdykt' };
   }
 }
 
@@ -93,6 +104,8 @@ async function judgePsych(history, reply) {
     wnikliwosc: p.wnikliwosc || 0,
     ruch: p.ruch || 0,
     cieplo: p.cieplo || 0,
+    komunikatywnosc: p.komunikatywnosc || 0,
+    ludzkiTon: p.ludzkiTon || 0,
     generic: !!p.generic,
     weakness: p.weakness || '',
     usage: {
