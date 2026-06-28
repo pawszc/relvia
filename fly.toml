@@ -13,11 +13,14 @@ primary_region = 'fra'
   ADVISOR = 'anthropic'
   ADVISOR_GLOBAL_BUDGET_USD = '20'
   ADVISOR_MODEL = 'claude-haiku-4-5'        # fallback/decide base
-  # model-split: tani Haiku decyduje (reżyser), mocniejszy Sonnet pisze dymki
-  # (jakość polszczyzny 3.65→4.88 w evalu). Koszt liczony per warstwa.
+  # model-split: tani Haiku decyduje (reżyser), generację dymek robi OpenAI
+  # gpt-5-chat-latest (eval: język 4.96/5 > Sonnet 4.88, ~38% taniej, nie-rozumujący).
+  # Decide ZOSTAJE na Anthropic Haiku (bezpieczeństwo). Koszt liczony per warstwa.
   ADVISOR_DECIDE_MODEL = 'claude-haiku-4-5'
-  ADVISOR_GENERATE_MODEL = 'claude-sonnet-4-6'
-  # cache 1h: ludzie odpowiadają wolno; 5-min cache wygasał → drogie re-zapisy
+  ADVISOR_GENERATE_PROVIDER = 'openai'
+  ADVISOR_GENERATE_MODEL = 'gpt-5-chat-latest'
+  ADVISOR_OPENAI_REASONING = 'none'         # gpt-5-chat-latest jest nie-rozumujący
+  # cache 1h: ludzie odpowiadają wolno; dotyczy warstwy decide (Anthropic)
   ADVISOR_CACHE_TTL = '1h'
   NODE_ENV = 'production'
 

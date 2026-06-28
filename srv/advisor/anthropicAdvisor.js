@@ -467,6 +467,14 @@ module.exports = {
   },
 
   async *generateReply(history, context = {}, decision, options = {}) {
+    // Warstwa GENERACJI może iść innym dostawcą (np. gpt-5-chat-latest — lepszy polski
+    // i taniej; pomiar w evalu). Decyzja (decide) zostaje na Anthropic. Leniwy require:
+    // openaiGenerate importuje buildGenerateParts stąd, więc ładujemy go dopiero w runtime
+    // (po pełnym załadowaniu tego modułu) — bez cyklu.
+    if (process.env.ADVISOR_GENERATE_PROVIDER === 'openai') {
+      yield* require('./openaiGenerate').generateReply(history, context, decision, options);
+      return;
+    }
     // System + wiadomości składa współdzielony buildGenerateParts (jedno źródło prawdy;
     // ten sam prompt używa adapter do testów innych dostawców w evalu).
     const { systemTexts, messages: rawMessages, bindUser } = buildGenerateParts(history, context, decision);
