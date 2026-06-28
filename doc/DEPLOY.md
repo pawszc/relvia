@@ -54,12 +54,9 @@ Jawne (niewrażliwe) zmienne są w `fly.toml [env]`; sekrety przez `fly secrets`
 | `NODE_ENV=production` | fly.toml | aktywuje profil CAP `[production]` (baza na `/data`) |
 | `ADVISOR=anthropic` | fly.toml | realny model (nie mock) |
 | `ADVISOR_MODEL` | fly.toml | bazowy/fallback; domyślnie `claude-haiku-4-5` |
-| `ADVISOR_DECIDE_MODEL` | fly.toml | model warstwy reżysera (decide); `claude-haiku-4-5` (Anthropic) |
-| `ADVISOR_GENERATE_PROVIDER` | fly.toml | `anthropic` (domyślnie) albo `openai` (warstwa generate u OpenAI) |
-| `ADVISOR_GENERATE_MODEL` | fly.toml | model generacji dymek; `gpt-5-chat-latest` (OpenAI, jakość PL 4.96/5) |
-| `ADVISOR_OPENAI_REASONING` | fly.toml | `none` dla modeli nie-rozumujących (gpt-5-chat); inaczej `low`/`minimal` |
-| `OPENAI_API_KEY` | **secret** | wymagany gdy `ADVISOR_GENERATE_PROVIDER=openai` |
-| `ADVISOR_CACHE_TTL` | fly.toml | `1h` (dotyczy warstwy decide / Anthropic) |
+| `ADVISOR_DECIDE_MODEL` | fly.toml | model warstwy reżysera (decide); `claude-haiku-4-5` |
+| `ADVISOR_GENERATE_MODEL` | fly.toml | model warstwy generacji dymek; `claude-sonnet-4-6` (trafność psychologiczna) |
+| `ADVISOR_CACHE_TTL` | fly.toml | `1h` (ludzie odpowiadają wolno; 5m wygasał) |
 | `ADVISOR_GLOBAL_BUDGET_USD` | fly.toml | globalny dzienny limit kosztu (bezpiecznik) |
 | `ANTHROPIC_API_KEY` | **secret** | wymagany |
 | `ADMIN_API_KEY` | **secret** | długi/losowy; bez niego `/admin` = 503 |

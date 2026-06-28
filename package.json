@@ -8,8 +8,7 @@
     "@cap-js/sqlite": "^1",
     "@sap/cds": "^8",
     "dotenv": "^17.4.2",
-    "express": "^4",
-    "openai": "^6.45.0"
+    "express": "^4"
   },
   "devDependencies": {
     "@sap/cds-dk": "^8"
