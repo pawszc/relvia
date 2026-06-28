@@ -11,7 +11,8 @@
     "express": "^4"
   },
   "devDependencies": {
-    "@sap/cds-dk": "^8"
+    "@sap/cds-dk": "^8",
+    "openai": "^6.45.0"
   },
   "scripts": {
     "deploy": "cds deploy",

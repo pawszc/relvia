@@ -10,6 +10,8 @@
  */
 const Anthropic = require('@anthropic-ai/sdk');
 
+// Najmocniejszy DOSTĘPNY model Anthropic. (Fable 5 wymaga osobnego dostępu — nasz klucz
+// go nie ma: „not available, please use Opus 4.8" — więc Opus 4.8 jest naszym szczytem.)
 const PSYCH_JUDGE_MODEL = 'claude-opus-4-8';
 const client = new Anthropic();
 
@@ -85,7 +87,7 @@ async function judgePsych(history, reply) {
   const convo = history.map((m) => `[${ROLE_LABEL[m.author] || m.author}]: ${m.text}`).join('\n');
   const resp = await client.messages.create({
     model: PSYCH_JUDGE_MODEL,
-    max_tokens: 500,
+    max_tokens: 700,
     thinking: { type: 'disabled' },
     system: SYSTEM,
     messages: [
@@ -117,4 +119,10 @@ async function judgePsych(history, reply) {
   };
 }
 
-module.exports = { judgePsych, PSYCH_JUDGE_MODEL };
+// renderHistory + SYSTEM/SCHEMA wystawione, by drugi sędzia (OpenAI) oceniał DOKŁADNIE
+// tę samą rubrykę 6 osi — wtedy oceny obu są porównywalne.
+function renderHistory(history) {
+  return history.map((m) => `[${ROLE_LABEL[m.author] || m.author}]: ${m.text}`).join('\n');
+}
+
+module.exports = { judgePsych, PSYCH_JUDGE_MODEL, PSYCH_SYSTEM: SYSTEM, PSYCH_SCHEMA: SCHEMA, renderHistory };

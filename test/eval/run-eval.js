@@ -33,13 +33,18 @@ const { scenarios } = require('./scenarios');
 const { judge, JUDGE_MODEL } = require('./judge');
 const { judgeLanguage, LANG_JUDGE_MODEL } = require('./language-judge');
 const { judgePsych, PSYCH_JUDGE_MODEL } = require('./psych-judge');
+const { judgePsychOpenAI, PSYCH_JUDGE_OPENAI_MODEL } = require('./psych-judge-openai');
 
 // ── argumenty ─────────────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
-const onlyCat = (args.find((a) => a.startsWith('--only=')) || '').split('=')[1];
+const onlyCatRaw = (args.find((a) => a.startsWith('--only=')) || '').split('=')[1];
+const catSet = onlyCatRaw ? new Set(onlyCatRaw.split(',')) : null; // --only=KALIBRACJA,DOSTEP
 const onlyIds = (args.find((a) => a.startsWith('--id=')) || '').split('=')[1];
 const noJudge = args.includes('--no-judge');
 const idSet = onlyIds ? new Set(onlyIds.split(',')) : null;
+// DRUGI sędzia psyche (OpenAI gpt-5.5-pro) jest DROGI (model rozumujący, ~$0.20/ocenę)
+// i WOLNY → domyślnie WYŁĄCZONY. Włącz tylko do kontroli biasu: PSYCH_OPENAI=1 npm run test:eval
+const psychOpenAiOn = /^(1|on|true|yes)$/i.test(process.env.PSYCH_OPENAI || '');
 
 const C = { reset: '\x1b[0m', red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m', dim: '\x1b[2m', bold: '\x1b[1m' };
 const tick = (ok) => (ok ? `${C.green}PASS${C.reset}` : `${C.red}FAIL${C.reset}`);
@@ -73,7 +78,7 @@ const sumUsage = (a, b) => ({
   const sameModel = mDecide === mGenerate;
   const modelLabel = sameModel ? mDecide : `decide=${mDecide} · generate=${mGenerate}`;
   const list = scenarios.filter(
-    (s) => (!onlyCat || s.cat === onlyCat) && (!idSet || idSet.has(s.id)),
+    (s) => (!catSet || catSet.has(s.cat)) && (!idSet || idSet.has(s.id)),
   );
 
   console.log(`\n${C.bold}EVAL — doradca/reżyser: ${modelLabel} | sędziowie: ${noJudge ? '(wyłączeni)' : `treść/${JUDGE_MODEL} · język+psych/${PSYCH_JUDGE_MODEL}`}${C.reset}`);
@@ -83,7 +88,10 @@ const sumUsage = (a, b) => ({
   let generateUsage = {}; // warstwa generacji dymki (model: generate)
   let opusUsage = {};      // sędzia treści + sędzia języka (Opus)
   const langScores = [];   // { id, grammar, naturalness, clarity, issues }
-  const psychScores = [];  // { id, dostrojenie, wnikliwosc, ruch, cieplo, generic, weakness }
+  const psychScores = [];   // sędzia Anthropic (Fable 5)
+  const psychScoresOA = []; // sędzia OpenAI (gpt-5.5-pro) — kontrola biasu
+  let fableUsage = {};      // koszt sędziego psyche Anthropic (Fable 5)
+  let openaiJudgeUsage = {};// koszt sędziego psyche OpenAI (gpt-5.5-pro)
   const results = [];
   const md = [];
   md.push(`# Raport eval — ${new Date().toISOString()}`);
@@ -140,12 +148,23 @@ const sumUsage = (a, b) => ({
       // TRAFNOŚĆ PSYCHOLOGICZNA (osobny sędzia) — na tej samej dymce, z kontekstem rozmowy
       try {
         const pj = await judgePsych(history, reply);
-        opusUsage = sumUsage(opusUsage, pj.usage);
+        fableUsage = sumUsage(fableUsage, pj.usage);
         psych = { id: s.id, dostrojenie: pj.dostrojenie, wnikliwosc: pj.wnikliwosc, ruch: pj.ruch, cieplo: pj.cieplo, komunikatywnosc: pj.komunikatywnosc, ludzkiTon: pj.ludzkiTon, generic: pj.generic, weakness: pj.weakness };
         psychScores.push(psych);
       } catch (e) {
         psych = { id: s.id, dostrojenie: 0, wnikliwosc: 0, ruch: 0, cieplo: 0, komunikatywnosc: 0, ludzkiTon: 0, generic: true, weakness: `psych-judge error: ${e.message}` };
         psychScores.push(psych);
+      }
+      // DRUGI, NIEZALEŻNY sędzia (OpenAI gpt-5.5-pro) — kontrola biasu Claude-ocenia-Claude'a.
+      // Drogi/wolny → tylko gdy PSYCH_OPENAI=1.
+      if (psychOpenAiOn) {
+        try {
+          const po = await judgePsychOpenAI(history, reply);
+          openaiJudgeUsage = sumUsage(openaiJudgeUsage, po.usage);
+          psychScoresOA.push({ id: s.id, dostrojenie: po.dostrojenie, wnikliwosc: po.wnikliwosc, ruch: po.ruch, cieplo: po.cieplo, komunikatywnosc: po.komunikatywnosc, ludzkiTon: po.ludzkiTon, generic: po.generic, weakness: po.weakness });
+        } catch (e) {
+          psychScoresOA.push({ id: s.id, dostrojenie: 0, wnikliwosc: 0, ruch: 0, cieplo: 0, komunikatywnosc: 0, ludzkiTon: 0, generic: true, weakness: `oa-judge error: ${e.message}` });
+        }
       }
     } else if (decision.shouldSpeak && s.rubric.length === 0) {
       // typ wymaga mowy, ale brak rubryki (np. REGRESJA) — generujemy bez sędziego dla podglądu/kosztu pełnej tury? pomijamy, by nie palić tokenów
@@ -237,23 +256,29 @@ const sumUsage = (a, b) => ({
   }
 
   // ── TRAFNOŚĆ PSYCHOLOGICZNA (agregat) ────────────────────────────────────────
-  if (psychScores.length) {
-    const avg = (k) => (psychScores.reduce((a, r) => a + (r[k] || 0), 0) / psychScores.length);
+  const psychAgg = (arr) => {
+    const avg = (k) => (arr.length ? arr.reduce((a, r) => a + (r[k] || 0), 0) / arr.length : 0);
     const d = avg('dostrojenie'), w = avg('wnikliwosc'), r2 = avg('ruch'), c2 = avg('cieplo');
     const km = avg('komunikatywnosc'), lt = avg('ludzkiTon');
-    const glebia = (d + w + r2 + c2) / 4;
-    const styl = (km + lt) / 2;
-    const generic = psychScores.filter((r) => r.generic).length;
-    const gcol = glebia >= 4.3 ? C.green : glebia >= 3.6 ? C.yellow : C.red;
-    const scol = styl >= 4.3 ? C.green : styl >= 3.6 ? C.yellow : C.red;
-    console.log(`\n${C.bold}── TRAFNOŚĆ PSYCHOLOGICZNA + STYL (sędzia ${PSYCH_JUDGE_MODEL}, n=${psychScores.length}) ──${C.reset}`);
-    console.log(`GŁĘBIA: dostrojenie ${d.toFixed(2)} · wnikliwość ${w.toFixed(2)} · ruch ${r2.toFixed(2)} · ciepło ${c2.toFixed(2)}  →  ${gcol}${glebia.toFixed(2)}/5${C.reset}`);
-    console.log(`STYL:   komunikatywność ${km.toFixed(2)} · ludzki ton ${lt.toFixed(2)}  →  ${scol}${styl.toFixed(2)}/5${C.reset}`);
-    console.log(`dymek „ogólnikowych": ${generic}/${psychScores.length}`);
-    md.push(`\n## Trafność psychologiczna + styl (sędzia \`${PSYCH_JUDGE_MODEL}\`, n=${psychScores.length})\n`);
-    md.push(`| dostrojenie | wnikliwość | ruch | ciepło | **głębia** | komunikat. | ludzki ton | **styl** | ogólników |`);
-    md.push(`|---|---|---|---|---|---|---|---|---|`);
-    md.push(`| ${d.toFixed(2)} | ${w.toFixed(2)} | ${r2.toFixed(2)} | ${c2.toFixed(2)} | **${glebia.toFixed(2)}** | ${km.toFixed(2)} | ${lt.toFixed(2)} | **${styl.toFixed(2)}** | ${generic}/${psychScores.length} |`);
+    return { d, w, r2, c2, km, lt, glebia: (d + w + r2 + c2) / 4, styl: (km + lt) / 2, generic: arr.filter((r) => r.generic).length };
+  };
+  if (psychScores.length) {
+    const A = psychAgg(psychScores);      // Anthropic Fable 5
+    const O = psychAgg(psychScoresOA);    // OpenAI gpt-5.5-pro
+    const col = (x) => (x >= 4.3 ? C.green : x >= 3.6 ? C.yellow : C.red);
+    const line = (label, g) =>
+      `${label.padEnd(22)} GŁĘBIA ${col(g.glebia)}${g.glebia.toFixed(2)}${C.reset} (dostr ${g.d.toFixed(2)} wnikl ${g.w.toFixed(2)} ruch ${g.r2.toFixed(2)} ciepło ${g.c2.toFixed(2)})  STYL ${col(g.styl)}${g.styl.toFixed(2)}${C.reset} (kom ${g.km.toFixed(2)} ludzki ${g.lt.toFixed(2)})  ogólniki ${g.generic}`;
+    console.log(`\n${C.bold}── TRAFNOŚĆ PSYCHOLOGICZNA — DWÓCH SĘDZIÓW (n=${psychScores.length}) ──${C.reset}`);
+    console.log(line(`Anthropic ${PSYCH_JUDGE_MODEL}:`, A));
+    if (psychScoresOA.length) {
+      console.log(line(`OpenAI ${PSYCH_JUDGE_OPENAI_MODEL}:`, O));
+      console.log(`${C.dim}KONSENSUS: głębia ${((A.glebia + O.glebia) / 2).toFixed(2)} · styl ${((A.styl + O.styl) / 2).toFixed(2)}  | rozjazd sędziów: głębia ${Math.abs(A.glebia - O.glebia).toFixed(2)} · styl ${Math.abs(A.styl - O.styl).toFixed(2)}${C.reset}`);
+    }
+    md.push(`\n## Trafność psychologiczna — dwóch sędziów (n=${psychScores.length})\n`);
+    md.push(`| sędzia | dostr | wnikl | ruch | ciepło | **głębia** | kom | ludzki | **styl** | ogóln. |`);
+    md.push(`|---|---|---|---|---|---|---|---|---|---|`);
+    md.push(`| Anthropic ${PSYCH_JUDGE_MODEL} | ${A.d.toFixed(2)} | ${A.w.toFixed(2)} | ${A.r2.toFixed(2)} | ${A.c2.toFixed(2)} | **${A.glebia.toFixed(2)}** | ${A.km.toFixed(2)} | ${A.lt.toFixed(2)} | **${A.styl.toFixed(2)}** | ${A.generic} |`);
+    if (psychScoresOA.length) md.push(`| OpenAI ${PSYCH_JUDGE_OPENAI_MODEL} | ${O.d.toFixed(2)} | ${O.w.toFixed(2)} | ${O.r2.toFixed(2)} | ${O.c2.toFixed(2)} | **${O.glebia.toFixed(2)}** | ${O.km.toFixed(2)} | ${O.lt.toFixed(2)} | **${O.styl.toFixed(2)}** | ${O.generic} |`);
   }
 
   // ── koszt ────────────────────────────────────────────────────────────────────
@@ -266,7 +291,13 @@ const sumUsage = (a, b) => ({
   console.log(`decide   (${mDecide}): ${fmtTok(decideUsage)}  →  $${decideCost.toFixed(4)}`);
   console.log(`generate (${mGenerate}): ${fmtTok(generateUsage)}  →  $${generateCost.toFixed(4)}`);
   console.log(`${C.bold}aplikacja (decide+generate): $${appCost.toFixed(4)}${C.reset}`);
-  console.log(`${C.dim}sędziowie (${JUDGE_MODEL}, treść+język): ${fmtTok(opusUsage)} → $${opusCost.toFixed(4)} [poza kosztem produkcji]${C.reset}\n`);
+  const fableCost = costUsd(fableUsage, PSYCH_JUDGE_MODEL); // Fable jest w models.js
+  // gpt-5.5-pro: brak w models.js — wycena lokalna ($30 in / $180 out za 1M)
+  const oaJudgeCost = ((openaiJudgeUsage.inputTokens || 0) * 30 + (openaiJudgeUsage.outputTokens || 0) * 180) / 1e6;
+  console.log(`${C.dim}sędzia treść+język (${JUDGE_MODEL}): ${fmtTok(opusUsage)} → $${opusCost.toFixed(4)}${C.reset}`);
+  console.log(`${C.dim}sędzia psyche A (${PSYCH_JUDGE_MODEL}): ${fmtTok(fableUsage)} → $${fableCost.toFixed(4)}${C.reset}`);
+  if (psychOpenAiOn) console.log(`${C.dim}sędzia psyche B (${PSYCH_JUDGE_OPENAI_MODEL}): ${fmtTok(openaiJudgeUsage)} → $${oaJudgeCost.toFixed(4)}${C.reset}`);
+  console.log(`${C.dim}sędziowie RAZEM (poza kosztem produkcji): $${(opusCost + fableCost + oaJudgeCost).toFixed(4)}${C.reset}\n`);
 
   md.push(`\n## Koszt\n`);
   md.push(`- decide \`${mDecide}\`: ${fmtTok(decideUsage)} → **$${decideCost.toFixed(4)}**`);
