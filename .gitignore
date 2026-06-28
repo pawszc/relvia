@@ -9,3 +9,6 @@ dist
 
 # prywatna konfiguracja z kluczem API (szablon: relvia.env.example)
 relvia.env
+
+# raporty z biegów evalu (efemeryczne, generowane lokalnie)
+test/eval/runs/

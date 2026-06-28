@@ -71,6 +71,9 @@ const CONFIG = {
   // tu, by wszystkie limity były w JEDNYM miejscu (nie zaszyte w anthropicAdvisor).
   decideMaxTokens: num(process.env.ADVISOR_DECIDE_MAX_TOKENS, 400),
   replyMaxTokens: num(process.env.ADVISOR_REPLY_MAX_TOKENS, 1024),
+  // Temperatura GENERACJI dymki. Domyślnie 1.0 (zachowanie prod). Niższa (np. 0.7)
+  // = mniej „kreatywnego" zjazdu w szablon, węższa wariancja języka. Eksperyment: ADVISOR_GENERATE_TEMP=0.7
+  generateTemp: num(process.env.ADVISOR_GENERATE_TEMP, 1),
 
   // --- KONTROLA DOSTĘPU (capability token per konwersacja) ------------------
   // Gdy ON (domyślnie): każda akcja ChatService wymaga `accessToken` pasującego do

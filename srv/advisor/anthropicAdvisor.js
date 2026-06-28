@@ -491,6 +491,7 @@ module.exports = {
       {
         model: generateModel(),
         max_tokens: CONFIG.replyMaxTokens,
+        temperature: CONFIG.generateTemp, // domyślnie 1.0; eksperyment ADVISOR_GENERATE_TEMP=0.7
         // Czat ma odpowiadać szybko — wyłączamy rozszerzone myślenie, by pierwszy
         // token pojawiał się od razu. (Można później dostroić jakość przez effort.)
         thinking: { type: 'disabled' },

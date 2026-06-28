@@ -20,6 +20,9 @@ primary_region = 'fra'
   ADVISOR_GENERATE_MODEL = 'claude-sonnet-4-6'
   # cache 1h: ludzie odpowiadają wolno; 5-min cache wygasał → drogie re-zapisy
   ADVISOR_CACHE_TTL = '1h'
+  # temperatura generacji 0.7 (z 1.0): stabilniejsza, mniej literówkowa polszczyzna
+  # (eval N=3: język 4.77→4.89, węższe pasmo; osie psychologiczne bez zmian)
+  ADVISOR_GENERATE_TEMP = '0.7'
   NODE_ENV = 'production'
 
 [[mounts]]
