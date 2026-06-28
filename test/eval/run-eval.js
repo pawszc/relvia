@@ -32,6 +32,7 @@ const { activeModel, decideModel, generateModel } = require(path.join(ROOT, 'srv
 const { scenarios } = require('./scenarios');
 const { judge, JUDGE_MODEL } = require('./judge');
 const { judgeLanguage, LANG_JUDGE_MODEL } = require('./language-judge');
+const { judgePsych, PSYCH_JUDGE_MODEL } = require('./psych-judge');
 
 // Warstwa GENERACJI może iść innym dostawcą (porównania cross-provider). Decide
 // zostaje na Anthropic (advisor.decide). ADVISOR_GENERATE_PROVIDER=openai → GPT-5 itp.
@@ -80,13 +81,14 @@ const sumUsage = (a, b) => ({
     (s) => (!onlyCat || s.cat === onlyCat) && (!idSet || idSet.has(s.id)),
   );
 
-  console.log(`\n${C.bold}EVAL — doradca/reżyser: ${modelLabel} | sędzia: ${noJudge ? '(wyłączony)' : JUDGE_MODEL} | język: ${noJudge ? '(wyłączony)' : LANG_JUDGE_MODEL}${C.reset}`);
+  console.log(`\n${C.bold}EVAL — doradca/reżyser: ${modelLabel} | sędziowie: ${noJudge ? '(wyłączeni)' : `treść/${JUDGE_MODEL} · język+psych/${PSYCH_JUDGE_MODEL}`}${C.reset}`);
   console.log(`${C.dim}scenariuszy: ${list.length} · ${new Date().toISOString()}${C.reset}\n`);
 
   let decideUsage = {};   // warstwa decyzji (model: decide)
   let generateUsage = {}; // warstwa generacji dymki (model: generate)
   let opusUsage = {};      // sędzia treści + sędzia języka (Opus)
   const langScores = [];   // { id, grammar, naturalness, clarity, issues }
+  const psychScores = [];  // { id, dostrojenie, wnikliwosc, ruch, cieplo, generic, weakness }
   const results = [];
   const md = [];
   md.push(`# Raport eval — ${new Date().toISOString()}`);
@@ -118,6 +120,7 @@ const sumUsage = (a, b) => ({
     let reply = null;
     let verdicts = [];
     let lang = null;
+    let psych = null;
     if (decision.shouldSpeak && s.rubric.length && !noJudge) {
       const r = await runReply(decision, history, ctx);
       reply = r.text;
@@ -138,6 +141,16 @@ const sumUsage = (a, b) => ({
       } catch (e) {
         lang = { id: s.id, grammar: 0, naturalness: 0, clarity: 0, issues: [{ quote: '', problem: `lang-judge error: ${e.message}` }] };
         langScores.push(lang);
+      }
+      // TRAFNOŚĆ PSYCHOLOGICZNA (osobny sędzia) — na tej samej dymce, z kontekstem rozmowy
+      try {
+        const pj = await judgePsych(history, reply);
+        opusUsage = sumUsage(opusUsage, pj.usage);
+        psych = { id: s.id, dostrojenie: pj.dostrojenie, wnikliwosc: pj.wnikliwosc, ruch: pj.ruch, cieplo: pj.cieplo, generic: pj.generic, weakness: pj.weakness };
+        psychScores.push(psych);
+      } catch (e) {
+        psych = { id: s.id, dostrojenie: 0, wnikliwosc: 0, ruch: 0, cieplo: 0, generic: true, weakness: `psych-judge error: ${e.message}` };
+        psychScores.push(psych);
       }
     } else if (decision.shouldSpeak && s.rubric.length === 0) {
       // typ wymaga mowy, ale brak rubryki (np. REGRESJA) — generujemy bez sędziego dla podglądu/kosztu pełnej tury? pomijamy, by nie palić tokenów
@@ -164,6 +177,12 @@ const sumUsage = (a, b) => ({
       console.log(`        ${col}język${C.reset} G${lang.grammar} N${lang.naturalness} Z${lang.clarity}${lang.issues.length ? `  ${C.red}usterki: ${lang.issues.length}${C.reset}` : ''}`);
       for (const it of lang.issues) console.log(`          ${C.dim}· „${it.quote}" — ${it.problem}${C.reset}`);
     }
+    if (psych) {
+      const pavg = (psych.dostrojenie + psych.wnikliwosc + psych.ruch + psych.cieplo) / 4;
+      const pcol = pavg >= 4.3 ? C.green : pavg >= 3.5 ? C.yellow : C.red;
+      console.log(`        ${pcol}psyche${C.reset} dostr${psych.dostrojenie} wnikl${psych.wnikliwosc} ruch${psych.ruch} ciepło${psych.cieplo} = ${pavg.toFixed(2)}${psych.generic ? `  ${C.red}[ogólnik]${C.reset}` : ''}`);
+      if (psych.weakness && psych.weakness !== '—') console.log(`          ${C.dim}↳ ${psych.weakness}${C.reset}`);
+    }
 
     // markdown
     md.push(`\n### [${s.id}] ${s.cat} — ${s.desc}`);
@@ -176,6 +195,10 @@ const sumUsage = (a, b) => ({
     if (lang) {
       md.push(`- język: **G${lang.grammar} N${lang.naturalness} Z${lang.clarity}**${lang.issues.length ? ` · usterki: ${lang.issues.length}` : ''}`);
       for (const it of lang.issues) md.push(`  - ⚠ „${it.quote}" — _${it.problem}_`);
+    }
+    if (psych) {
+      const pavg = (psych.dostrojenie + psych.wnikliwosc + psych.ruch + psych.cieplo) / 4;
+      md.push(`- psyche: **dostr${psych.dostrojenie} wnikl${psych.wnikliwosc} ruch${psych.ruch} ciepło${psych.cieplo} = ${pavg.toFixed(2)}**${psych.generic ? ' · ⚠ ogólnik' : ''}${psych.weakness && psych.weakness !== '—' ? ` · _${psych.weakness}_` : ''}`);
     }
     if (reply) md.push(`- dymka: > ${reply.replace(/\n+/g, ' ')}`);
   }
@@ -213,6 +236,22 @@ const sumUsage = (a, b) => ({
     md.push(`| gramatyka | naturalność | zrozumiałość | **średnia** | dymek min<4 | usterek |`);
     md.push(`|---|---|---|---|---|---|`);
     md.push(`| ${g.toFixed(2)} | ${n.toFixed(2)} | ${z.toFixed(2)} | **${overall.toFixed(2)}/5** | ${belowBar}/${langScores.length} | ${issues} |`);
+  }
+
+  // ── TRAFNOŚĆ PSYCHOLOGICZNA (agregat) ────────────────────────────────────────
+  if (psychScores.length) {
+    const avg = (k) => (psychScores.reduce((a, r) => a + (r[k] || 0), 0) / psychScores.length);
+    const d = avg('dostrojenie'), w = avg('wnikliwosc'), r2 = avg('ruch'), c2 = avg('cieplo');
+    const overall = (d + w + r2 + c2) / 4;
+    const generic = psychScores.filter((r) => r.generic).length;
+    const col = overall >= 4.3 ? C.green : overall >= 3.6 ? C.yellow : C.red;
+    console.log(`\n${C.bold}── TRAFNOŚĆ PSYCHOLOGICZNA (sędzia ${PSYCH_JUDGE_MODEL}, n=${psychScores.length}) ──${C.reset}`);
+    console.log(`dostrojenie ${d.toFixed(2)} · wnikliwość ${w.toFixed(2)} · ruch ${r2.toFixed(2)} · ciepło ${c2.toFixed(2)}  →  ${col}średnia ${overall.toFixed(2)}/5${C.reset}`);
+    console.log(`dymek „ogólnikowych": ${generic}/${psychScores.length}`);
+    md.push(`\n## Trafność psychologiczna (sędzia \`${PSYCH_JUDGE_MODEL}\`, n=${psychScores.length})\n`);
+    md.push(`| dostrojenie | wnikliwość | ruch | ciepło | **średnia** | ogólników |`);
+    md.push(`|---|---|---|---|---|---|`);
+    md.push(`| ${d.toFixed(2)} | ${w.toFixed(2)} | ${r2.toFixed(2)} | ${c2.toFixed(2)} | **${overall.toFixed(2)}/5** | ${generic}/${psychScores.length} |`);
   }
 
   // ── koszt ────────────────────────────────────────────────────────────────────
