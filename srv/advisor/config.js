@@ -74,6 +74,10 @@ const CONFIG = {
   // Temperatura GENERACJI dymki. Domyślnie 1.0 (zachowanie prod). Niższa (np. 0.7)
   // = mniej „kreatywnego" zjazdu w szablon, węższa wariancja języka. Eksperyment: ADVISOR_GENERATE_TEMP=0.7
   generateTemp: num(process.env.ADVISOR_GENERATE_TEMP, 1),
+  // Temperatura DECYZJI (reżyser/klasyfikator). Domyślnie 1.0 (prod). Niższa (0.2) =
+  // stabilniejsza klasyfikacja bezpieczeństwa (mniej losowych pudeł PROTECT), ale nie
+  // twarde 0 — zostaje minimum przestrzeni na graniczne przypadki. ADVISOR_DECIDE_TEMP=0.2
+  decideTemp: num(process.env.ADVISOR_DECIDE_TEMP, 1),
 
   // --- KONTROLA DOSTĘPU (capability token per konwersacja) ------------------
   // Gdy ON (domyślnie): każda akcja ChatService wymaga `accessToken` pasującego do

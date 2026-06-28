@@ -23,6 +23,9 @@ primary_region = 'fra'
   # temperatura generacji 0.7 (z 1.0): stabilniejsza, mniej literówkowa polszczyzna
   # (eval N=3: język 4.77→4.89, węższe pasmo; osie psychologiczne bez zmian)
   ADVISOR_GENERATE_TEMP = '0.7'
+  # temperatura decyzji 0.2 (z 1.0): stabilna klasyfikacja bezpieczeństwa
+  # (eval N=3: NADUŻYCIE typ 8-9→10/10 stabilnie, koniec losowego rotującego pudła; KRYZYS 6/6)
+  ADVISOR_DECIDE_TEMP = '0.2'
   NODE_ENV = 'production'
 
 [[mounts]]
