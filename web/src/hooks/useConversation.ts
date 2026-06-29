@@ -23,6 +23,10 @@ export type SendStatus = 'sending' | 'sent' | 'failed';
 export interface UiMessage extends ChatMessage {
   clientId?: string; // lokalny id wiadomości pary — do reconcile i retry
   status?: SendStatus;
+  // adresat dymki doradcy wg reżysera (= nextSpeaker z decyzji); steruje stroną „dwa
+  // brzegi" (advisorSide). JEDNO źródło prawdy z backendem — eliminuje rozjazd z lokalnej
+  // heurystyki ostatniego mówcy (np. PROTECT do Niej, gdy sprawca pisał ostatni).
+  audience?: SenderAuthor;
 }
 
 /**
@@ -230,6 +234,9 @@ export function useConversation(client: ChatClient): UseConversation {
       // typ decyzji → stempel na żywej dymce, by pozycja „dwa brzegi" liczyła się z TEGO
       // SAMEGO źródła co reżyser (a nie z fallbacku po ostatnim mówcy przed odświeżeniem)
       let pendingDecisionType: UiMessage['decisionType'];
+      // adresat wg reżysera (nextSpeaker) — stempel na żywej dymce, by pozycja szła z tego
+      // samego źródła co backend (nie z lokalnej heurystyki ostatniego mówcy)
+      let pendingAudience: UiMessage['audience'];
 
       let confirmed = false;
       try {
@@ -263,6 +270,7 @@ export function useConversation(client: ChatClient): UseConversation {
               restingNextSpeaker = ev.nextSpeaker;
               pendingKind = ev.decision === 'INTERVENE' ? 'INTERVENTION' : 'FULL';
               pendingDecisionType = ev.decision;
+              pendingAudience = ev.nextSpeaker;
               setLastDecision({ type: ev.decision, nextSpeaker: ev.nextSpeaker, composerHint: ev.composerHint });
               setAdvisorStatus({ kind: 'listening', hint: ev.uiHint });
               break;
@@ -280,7 +288,7 @@ export function useConversation(client: ChatClient): UseConversation {
             case 'advisor.start':
               setAdvisorTyping(true);
               setAdvisorStatus({ kind: 'typing' });
-              setMessages((m) => [...m, { ...ev.message, text: '', kind: pendingKind, decisionType: pendingDecisionType }]);
+              setMessages((m) => [...m, { ...ev.message, text: '', kind: pendingKind, decisionType: pendingDecisionType, audience: pendingAudience }]);
               break;
             case 'advisor.delta':
               setMessages((m) => appendToLast(m, ev.text));

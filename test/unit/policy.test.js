@@ -25,10 +25,20 @@ const reset = () => (seq = 0);
 const LONG = 'To jest dłuższa, treściwa wypowiedź o tym, co naprawdę przeżywam teraz w tej sytuacji.';
 
 // ── replyAudience ──────────────────────────────────────────────────────────
-test('replyAudience: PROTECT i typy „do obojga" → TOGETHER', () => {
-  for (const type of ['SUMMARIZE', 'REFRAME', 'PROPOSE', 'CHOOSE', 'PROTECT']) {
+test('replyAudience: typy „do obojga" → TOGETHER (BEZ PROTECT)', () => {
+  for (const type of ['SUMMARIZE', 'REFRAME', 'PROPOSE', 'CHOOSE']) {
     assert.equal(replyAudience({ type }, [m('HER', 'x')]), 'TOGETHER', type);
   }
+});
+
+test('replyAudience: PROTECT → OSOBA SKRZYWDZONA (nextSpeaker reżysera; fallback bieżący mówca); NIGDY TOGETHER', () => {
+  // reżyser wskazuje ofiarę — działa też w edge: sprawca pisał ostatni, dymka do Niej
+  assert.equal(replyAudience({ type: 'PROTECT', nextSpeaker: 'HER' }, [m('HIM', 'x')]), 'HER');
+  reset();
+  assert.equal(replyAudience({ type: 'PROTECT', nextSpeaker: 'HIM' }, [m('HER', 'x')]), 'HIM');
+  reset();
+  // brak wskazania reżysera → fallback na bieżącego mówcę (zwykle ofiara opisująca krzywdę)
+  assert.equal(replyAudience({ type: 'PROTECT' }, [m('HER', 'x')]), 'HER');
 });
 
 test('replyAudience: ASK_OTHER → nextSpeaker; reszta → bieżący mówca', () => {
@@ -70,17 +80,18 @@ test('audienceBinding: ASK_OTHER→HER wiąże w formy ŻEŃSKIE; DEEPEN po HIM 
 });
 
 // ── finalizeDecision: PROTECT jak tor ochronny ──────────────────────────────
-test('finalizeDecision: PROTECT → kind FULL, zeruje liczniki, adresat TOGETHER', () => {
+test('finalizeDecision: PROTECT → kind FULL, zeruje liczniki, adresat = osoba skrzywdzona (NIE TOGETHER)', () => {
   reset();
+  // reżyser tagnął ofiarę (HER) MIMO że sprawca (HIM) pisał ostatni — adresat trzyma się ofiary
   const out = finalizeDecision(
-    { type: 'PROTECT', shouldSpeak: true },
-    [m('HIM', 'Jesteś głupia i do niczego.'), m('HER', LONG)],
+    { type: 'PROTECT', shouldSpeak: true, nextSpeaker: 'HER' },
+    [m('HER', LONG), m('HIM', 'Jesteś głupia i do niczego.')],
     { turnsSinceProgress: 4, escalationStreak: 3 },
   );
   assert.equal(out.kind, 'FULL');
   assert.equal(out.turnsSinceProgress, 0);
   assert.equal(out.escalationStreak, 0);
-  assert.equal(out.nextSpeaker, 'TOGETHER');
+  assert.equal(out.nextSpeaker, 'HER'); // skrzywdzona osoba, NIE „oboje"
 });
 
 test('finalizeDecision: SAFETY_STOP zeruje liczniki', () => {
