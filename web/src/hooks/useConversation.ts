@@ -52,7 +52,7 @@ const nowIso = () => new Date().toISOString();
  * tworzenie konwersacji zostaje nietknięte (rozmowa powstaje dopiero przy 1. wysyłce).
  */
 const WELCOME_TEXT =
-  'Cześć. Jestem tu dla Was obojga — nie po to, żeby oceniać, kto ma rację, tylko żeby pomóc Wam się nawzajem usłyszeć. Zacznijcie, jak Wam wygodnie: jedno z Was albo wspólnie. Słucham.';
+  'Cześć. Możecie porozmawiać tu o czymś ważnym, codziennym albo zupełnie drobnym. Pomogę Wam przejść przez temat krok po kroku, lepiej się zrozumieć i łatwiej dogadać. Zacznijcie osobno albo razem.';
 const WELCOME_ID = 'welcome';
 
 /**

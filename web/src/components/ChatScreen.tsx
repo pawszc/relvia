@@ -150,7 +150,9 @@ export default function ChatScreen({ client }: Props) {
             <span className="ring ring-him" />
           </span>
           <span className="brand-text">
-            <span className="brand-title">Relvia</span>
+            <span className="brand-title">
+              Relvia<span className="brand-badge">EXPERIMENTAL</span>
+            </span>
             <span className="brand-sub">support for your relationship · room for both voices</span>
           </span>
         </div>
