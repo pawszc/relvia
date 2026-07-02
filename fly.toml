@@ -11,6 +11,8 @@ primary_region = 'fra'
 
 [env]
   ADVISOR = 'anthropic'
+  # twardy próg kosztu na pojedynczą rozmowę (per-sesja); po nim doradca → read-only
+  ADVISOR_BUDGET_USD = '2.5'
   ADVISOR_GLOBAL_BUDGET_USD = '20'
   ADVISOR_MODEL = 'claude-haiku-4-5'        # fallback/decide base
   # model-split: tani Haiku decyduje (reżyser), mocniejszy Sonnet pisze dymki.
