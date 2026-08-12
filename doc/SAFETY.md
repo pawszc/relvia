@@ -197,8 +197,17 @@ z rąk do rąk), więc zamiast „auth per user":
 - `startConversation` zwraca **`accessToken`** (niezgadywalny UUID, kolumna `Conversations.accessToken`).
   Każda akcja konwersacji (`sendMessage`, `getHistory`, `conversationState`, `conversationUsage`,
   `resolveParkedTopic`, `setAdvisorMode`) przechodzi przez **`assertAccess`** → **403** bez/ze złym tokenem.
-  Ten sam 403 dla nieistniejącej konwersacji → **brak enumeracji** (IDOR zamknięty). Token jest jedynym
-  dowodem „to moja rozmowa"; front trzyma go w pamięci sesji (hook), backend wymaga (`CONFIG.accessControlEnabled`, domyślnie ON).
+  Ten sam 403 dla nieistniejącej konwersacji → **brak enumeracji**. `assertAccess` chroni w ten sposób
+  **zasób NADRZĘDNY** (konwersację); token jest jedynym dowodem „to moja rozmowa"; front trzyma go w
+  pamięci sesji (hook), backend wymaga (`CONFIG.accessControlEnabled`, domyślnie ON).
+- **Zasoby PODRZĘDNE muszą być dodatkowo związane z konwersacją** — sprawdzenie rodzica nie wystarcza,
+  gdy akcja przyjmuje globalny UUID zasobu-dziecka. `resolveParkedTopic` odczytuje ORAZ aktualizuje
+  temat wyłącznie przez złożony scope **`{ ID: topicId, conversation_ID: conversationId }`**
+  (`parkedTopicScope` w [`chat-service.js`](../srv/chat-service.js)) — ten sam predykat przy SELECT
+  i przy każdym UPDATE (obrona w głębi). Dzięki temu token konwersacji A **nie pozwala modyfikować
+  ParkedTopics konwersacji B** (dawny cross-conversation IDOR: znajomość cudzego `topicId` wystarczała
+  do RESOLVED/DISMISSED/PROMOTE i skopiowania tekstu obcego tematu jako kotwicy). Obcy i nieistniejący
+  `topicId` zwracają ten sam neutralny wynik `{ ok: false }` — bez enumeracji i bez wycieku treści.
 - Historia: dawny odczyt OData zastąpiony akcją **`getHistory(conversationId, accessToken)`**.
 
 **Zaufany wgląd w całą bazę — `AdminService` (/admin).** Pełny OData (read-only) wszystkich encji
@@ -224,7 +233,8 @@ Odpalane w `npm run test:all` (unit + integration + web):
 | Detekcja kryzysu / PROTECT / kalibracja (jakość modelu) | eval `test/eval/` (płatny, na żądanie) |
 | Fallback nie myli off-topic/injection z kryzysem; kryzys nadal `SAFETY_STOP` | `test/unit/security.test.js` |
 | Guardrails anti-injection obecne w prompcie; ChatService bez encji OData; AdminService read-only | `test/unit/security.test.js` |
-| Capability token: 403 bez/zły token, IDOR, brak enumeracji, `getHistory` | `test/integration/access.test.js` |
+| Capability token: 403 bez/zły token, IDOR konwersacji, brak enumeracji, `getHistory` | `test/integration/access.test.js` |
+| Ownership ParkedTopics: PROMOTE/RESOLVED/DISMISSED cross-conversation, foreign vs missing `topicId`, regresja pozytywna | `test/integration/access.test.js` |
 | Admin bramka 503/401/200 | `test/unit/admin-auth.test.js` |
 | Budżet / globalny limit / rate-limit wiadomości | `test/integration/budget|global|ratelimit.test.js` |
 | Dławik nowych rozmów (odstęp + 30/h) | `test/unit/rate-limit.test.js` + `test/integration/newconv.test.js` |

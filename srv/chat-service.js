@@ -97,6 +97,15 @@ module.exports = function (srv) {
   const ParkedTopics = 'relvia.ParkedTopics';
   const USAGE_EVENTS = 'relvia.UsageEvents';
 
+  /**
+   * JEDNO źródło prawdy własności zaparkowanego tematu: temat identyfikuje PARA
+   * (conversationId, topicId), nigdy sam topicId. Używane przy odczycie i każdej
+   * aktualizacji ParkedTopics w resolveParkedTopic (anty-IDOR zasobu podrzędnego).
+   */
+  function parkedTopicScope(conversationId, topicId) {
+    return { ID: topicId, conversation_ID: conversationId };
+  }
+
   /** Otwarte zaparkowane tematy (kontraktowy kształt), wg kolejności odłożenia. */
   async function loadParked(conversationId) {
     const rows = await SELECT.from(ParkedTopics)
@@ -652,14 +661,23 @@ module.exports = function (srv) {
   srv.on('resolveParkedTopic', async (req) => {
     const { conversationId, topicId, action, accessToken } = req.data;
     await assertAccess(req, conversationId, accessToken);
-    const topic = await SELECT.one.from(ParkedTopics).where({ ID: topicId });
+    // WŁASNOŚĆ ZASOBU PODRZĘDNEGO: temat jest identyfikowany parą (conversationId,
+    // topicId) — samo assertAccess chroni tylko KONWERSACJĘ (zasób nadrzędny), a
+    // topicId to globalny UUID: bez tego scope'a token konwersacji A mógł czytać
+    // i modyfikować tematy konwersacji B (cross-conversation IDOR). Ten sam scope
+    // obowiązuje przy odczycie ORAZ każdym UPDATE (obrona w głębi). Temat obcej
+    // konwersacji jest nieodróżnialny od nieistniejącego → neutralne { ok:false }
+    // (brak enumeracji topicId, zero wycieku treści).
+    const topicScope = parkedTopicScope(conversationId, topicId);
+    const topic = await SELECT.one.from(ParkedTopics).where(topicScope);
     if (!topic) return { ok: false };
 
     if (action === 'PROMOTE') {
+      // kotwica wyłącznie z tematu odczytanego przez topicScope (nigdy z obcej rozmowy)
       await UPDATE(Conversations).set({ topic: topic.text }).where({ ID: conversationId });
-      await UPDATE(ParkedTopics).set({ status: 'RESOLVED' }).where({ ID: topicId });
+      await UPDATE(ParkedTopics).set({ status: 'RESOLVED' }).where(topicScope);
     } else if (action === 'RESOLVED' || action === 'DISMISSED') {
-      await UPDATE(ParkedTopics).set({ status: action }).where({ ID: topicId });
+      await UPDATE(ParkedTopics).set({ status: action }).where(topicScope);
     } else {
       return { ok: false };
     }
