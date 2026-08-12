@@ -9,6 +9,7 @@ import type {
   Phase,
   SenderAuthor,
 } from '@shared/chat-contract';
+import i18n, { currentLocale } from '../i18n';
 
 /** Ostatnia decyzja reżysera — napędza „inteligentny kompozytor" (auto-autor + placeholder). */
 export interface LastDecision {
@@ -32,13 +33,16 @@ export interface UiMessage extends ChatMessage {
 /**
  * Status "sceniczny" Advisora — to nie spinner, tylko obecność reżysera.
  *  - idle      → nic się nie dzieje,
- *  - listening → analizuje właśnie zakończoną turę,
+ *  - listening → analizuje właśnie zakończoną turę (decisionType = jaka decyzja),
  *  - typing    → pisze dymkę (streaming),
- *  - waiting   → świadomie milczy / czeka na drugą stronę (z podpowiedzią).
+ *  - waiting   → świadomie milczy (bez waitingFor) / czeka na kogoś (waitingFor).
+ * STRUKTURA zamiast gotowego tekstu — etykietę tłumaczy ChatScreen przy renderze
+ * (i18n), więc zmiana języka natychmiast zmienia też status.
  */
 export interface AdvisorStatus {
   kind: 'idle' | 'listening' | 'typing' | 'waiting';
-  hint?: string;
+  waitingFor?: SenderAuthor; // kogo dotyczy czekanie (advisor.end po oddaniu głosu)
+  decisionType?: AdvisorDecisionType; // przy 'listening' — do doboru etykiety
 }
 
 const uid = () => crypto.randomUUID();
@@ -50,39 +54,15 @@ const nowIso = () => new Date().toISOString();
  * progu było czuć obecność doradcy (nie tylko placeholder w tle). Nie persystowane
  * w bazie i nie wysyłane do modelu — żyje wyłącznie w stanie UI, więc leniwe
  * tworzenie konwersacji zostaje nietknięte (rozmowa powstaje dopiero przy 1. wysyłce).
+ * Treść: i18n `conversation.welcome` (pl/en/de) — czytana w chwili startu animacji.
  */
-const WELCOME_TEXT =
-  'Cześć. Możecie porozmawiać tu o czymś ważnym, codziennym albo zupełnie drobnym. Pomogę Wam przejść przez temat krok po kroku, lepiej się zrozumieć i łatwiej dogadać. Zacznijcie osobno albo razem.';
 const WELCOME_ID = 'welcome';
-
-/**
- * Disclaimer bezpieczeństwa (A1) — pełna treść, pokazywana w stałej mikro-stopce pod ⓘ
- * (nie jako dymka w czacie). Relvia to empatyczny mediator AI, NIE terapeuta i NIE pomoc
- * doraźna. Ujawnienie AI spełnia obowiązek przejrzystości (EU AI Act art. 50). Numery
- * zweryfikowane dla Polski (112 alarmowy; 116 123 kryzysowy telefon zaufania;
- * 800 120 002 Niebieska Linia).
- * ⚠ Przed publikacją: potwierdź numery dla docelowego rynku/języka. Patrz SAFETY.md / PRODUCTION.md.
- */
-export const SAFETY_DISCLAIMER_TEXT =
-  'Relvia to doradca AI, nie terapeuta ani pomoc w nagłych sytuacjach. Jeśli potrzebujesz pilnej pomocy, zadzwoń pod 112. Wsparcie emocjonalne: całodobowy telefon zaufania 116 123; przy przemocy — Niebieska Linia 800 120 002.';
-
-/** Zwięzła linijka do stopki — zawsze widoczna; pełna treść (z numerami) kryje się pod „Potrzebujesz pomocy?". */
-export const SAFETY_DISCLAIMER_SHORT = 'Relvia to doradca AI a nie terapeuta';
-
-/** Treść panelu „Potrzebujesz pomocy?" — same numery kryzysowe, bez powtarzania linijki stopki. */
-export const SAFETY_HELP_TEXT =
-  'Jeśli potrzebujesz pilnej pomocy, zadzwoń pod 112. Wsparcie emocjonalne: całodobowy telefon zaufania 116 123; przy przemocy — Niebieska Linia 800 120 002.';
 
 /** Dokleja tekst do wiadomości o danym id (no-op, gdy jej nie ma — np. para zaczęła sama). */
 function appendToId(messages: UiMessage[], id: string, text: string): UiMessage[] {
   return messages.map((x) => (x.id === id ? { ...x, text: x.text + text } : x));
 }
 
-/** Status „na kogo doradca czeka" — gdy decyzja wskazuje następnego mówcę. */
-function waitHintFor(next: SenderAuthor, herName: string, hisName: string): string {
-  if (next === 'TOGETHER') return 'Doradca czeka na Waszą wspólną odpowiedź…';
-  return `Doradca czeka na odpowiedź: ${next === 'HER' ? herName : hisName}`;
-}
 const nextSeq = (messages: UiMessage[]) => messages.reduce((m, x) => Math.max(m, x.seq), 0) + 1;
 
 function appendToLast(messages: UiMessage[], text: string): UiMessage[] {
@@ -108,6 +88,12 @@ function setStatus(messages: UiMessage[], clientId: string, status: SendStatus):
   return messages.map((x) => (x.clientId === clientId ? { ...x, status } : x));
 }
 
+/** Kod błędu z wyjątku klienta HTTP (property `code`) albo fallback. */
+function errorCode(e: unknown, fallback: string): string {
+  const code = (e as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && code ? code : fallback;
+}
+
 export interface UseConversation {
   messages: UiMessage[];
   advisorTyping: boolean;
@@ -118,6 +104,8 @@ export interface UseConversation {
   phase: Phase; // bieżący miękki cel rozmowy
   parkedTopics: ParkedTopic[]; // lista „do omówienia później"
   sending: boolean;
+  // KOD błędu (klucz w errors.* zasobów i18n) — tekst tłumaczy ChatScreen przy
+  // renderze, więc zmiana języka zmienia też widoczny komunikat. null = brak błędu.
   error: string | null;
   ready: boolean;
   herName: string; // imię HER z konwersacji (źródło: encja Conversations)
@@ -186,19 +174,47 @@ export function useConversation(client: ChatClient): UseConversation {
       // Chunkowanie i tempo 1:1 z realnym torem SSE (mockAdvisor.js / mockChatClient.ts):
       // chunk = „słowo + spacja" (/\S+\s*/g), 40 ms na chunk, po krótkiej chwili „myśli"
       // (kropki widoczne ~480 ms) — żeby wrażenie było nie do odróżnienia od zwykłej tury.
-      const chunks = WELCOME_TEXT.match(/\S+\s*/g) ?? [WELCOME_TEXT];
+      const welcomeText = i18n.t('conversation.welcome'); // język bieżący w chwili startu
+      const chunks = welcomeText.match(/\S+\s*/g) ?? [welcomeText];
       chunks.forEach((c, i) => {
         setTimeout(() => {
           setMessages((m) => appendToId(m, WELCOME_ID, c));
         }, 480 + i * 40);
       });
       // koniec strumienia — wygaś „pisze" (tylko jeśli nikt nie przejął statusu)
+      // + normalizacja: pełne powitanie w BIEŻĄCYM języku (gdyby ktoś przełączył
+      // język w trakcie streamu — handler languageChanged pomija trwający stream)
       setTimeout(() => {
         setAdvisorTyping(false);
         setAdvisorStatus((s) => (s.kind === 'typing' ? { kind: 'idle' } : s));
+        setMessages((m) =>
+          m.length === 1 && m[0].id === WELCOME_ID
+            ? [{ ...m[0], text: i18n.t('conversation.welcome') }]
+            : m,
+        );
       }, 480 + chunks.length * 40 + 120);
     }, 450); // namysł po wyrenderowaniu — żeby poczuć opóźnienie
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Zmiana języka PRZED pierwszą turą pary: powitanie (syntetyczne, nie-persystowane)
+  // przepisujemy na nowy język — żeby świeży ekran nie mieszał języków. Historyczne
+  // wiadomości ROZMOWY nigdy nie są tłumaczone (kontrakt) — stąd warunek "tylko welcome".
+  const typingRef = useRef(false);
+  useEffect(() => {
+    typingRef.current = advisorTyping;
+  }, [advisorTyping]);
+  useEffect(() => {
+    const onLangChange = () => {
+      if (typingRef.current) return; // nie mieszaj się w trwający strumień powitania
+      setMessages((m) =>
+        m.length === 1 && m[0].id === WELCOME_ID
+          ? [{ ...m[0], text: i18n.t('conversation.welcome') }]
+          : m,
+      );
+    };
+    i18n.on('languageChanged', onLangChange);
+    return () => i18n.off('languageChanged', onLangChange);
   }, []);
 
   /**
@@ -210,8 +226,8 @@ export function useConversation(client: ChatClient): UseConversation {
    */
   const ensureConversation = useCallback(async (): Promise<string> => {
     if (conversationId) return conversationId;
-    // jedyne miejsce, w którym powstaje konwersacja:
-    const meta = await client.startConversation('Niedziele');
+    // jedyne miejsce, w którym powstaje konwersacja (locale → metadane sesji):
+    const meta = await client.startConversation('Niedziele', currentLocale());
     accessTokenRef.current = meta.accessToken; // zapamiętaj token PRZED pierwszą wysyłką
     setConversationId(meta.conversationId);
     setHerName(meta.herName); // imiona z bazy (encja Conversations)
@@ -226,8 +242,7 @@ export function useConversation(client: ChatClient): UseConversation {
       setError(null);
       setMessages((m) => setStatus(m, clientId, 'sending'));
 
-      // zapamiętujemy "spoczynkowy" status z decyzji (np. ASK_OTHER → czeka na drugą stronę)
-      let restingHint: string | undefined;
+      // zapamiętujemy "spoczynkowy" stan z decyzji (np. ASK_OTHER → czeka na drugą stronę)
       let restingNextSpeaker: SenderAuthor | undefined;
       // rodzaj dymki znany już z decyzji → ustawiamy go przy starcie (bez przeskoku renderu)
       let pendingKind: UiMessage['kind'] = 'FULL';
@@ -245,6 +260,8 @@ export function useConversation(client: ChatClient): UseConversation {
           author,
           text,
           accessToken: accessTokenRef.current ?? undefined,
+          // język UI w chwili wysyłki — steruje językiem NASTĘPNEJ odpowiedzi doradcy
+          locale: currentLocale(),
         })) {
           switch (ev.type) {
             case 'message.user':
@@ -265,19 +282,19 @@ export function useConversation(client: ChatClient): UseConversation {
               );
               break;
             case 'advisor.decision':
-              // reżyser właśnie ocenił turę; po dymce hint może zostać statusem spoczynkowym
-              restingHint = ev.uiHint;
+              // reżyser właśnie ocenił turę; po dymce nextSpeaker zostaje stanem spoczynkowym
               restingNextSpeaker = ev.nextSpeaker;
               pendingKind = ev.decision === 'INTERVENE' ? 'INTERVENTION' : 'FULL';
               pendingDecisionType = ev.decision;
               pendingAudience = ev.nextSpeaker;
               setLastDecision({ type: ev.decision, nextSpeaker: ev.nextSpeaker, composerHint: ev.composerHint });
-              setAdvisorStatus({ kind: 'listening', hint: ev.uiHint });
+              setAdvisorStatus({ kind: 'listening', decisionType: ev.decision });
               break;
             case 'advisor.wait':
-              // Advisor świadomie milczy — NIE dodajemy dymki, pokazujemy status
+              // Advisor świadomie milczy — NIE dodajemy dymki, pokazujemy status.
+              // (Tekst hinta z backendu ignorujemy — etykietę tłumaczy UI z i18n.)
               setAdvisorTyping(false);
-              setAdvisorStatus({ kind: 'waiting', hint: ev.uiHint });
+              setAdvisorStatus({ kind: 'waiting' });
               break;
             case 'phase.change':
               setPhase(ev.phase);
@@ -297,10 +314,10 @@ export function useConversation(client: ChatClient): UseConversation {
               setAdvisorTyping(false);
               setMessages((m) => setLastMeta(setLastText(m, ev.text), { kind: ev.kind }));
               // po wypowiedzi: jeśli decyzja oddawała głos komuś, pokaż NA KOGO czekamy
-              // (hint z reguł, a gdy go brak — np. model — budujemy z nextSpeaker + imion)
+              // (etykieta budowana przy renderze w ChatScreen — z i18n + imion)
               setAdvisorStatus(
                 restingNextSpeaker
-                  ? { kind: 'waiting', hint: restingHint ?? waitHintFor(restingNextSpeaker, herName, hisName) }
+                  ? { kind: 'waiting', waitingFor: restingNextSpeaker }
                   : { kind: 'idle' },
               );
               break;
@@ -308,23 +325,24 @@ export function useConversation(client: ChatClient): UseConversation {
               setAdvisorTyping(false);
               setAdvisorStatus({ kind: 'idle' });
               setMessages((m) => setStatus(m, clientId, 'failed'));
-              setError(ev.message);
+              // stabilny KOD błędu (nie surowy tekst providera) — tłumaczony w UI
+              setError(ev.code || 'generic');
               break;
           }
         }
         if (!confirmed) {
           setMessages((m) => setStatus(m, clientId, 'failed'));
-          setError((e) => e ?? 'Backend nie potwierdził wysłania.');
+          setError((e) => e ?? 'NOT_CONFIRMED');
         }
       } catch (e) {
         setAdvisorTyping(false);
         setMessages((m) => setStatus(m, clientId, 'failed'));
-        setError(e instanceof Error ? e.message : 'Nie udało się wysłać.');
+        setError(errorCode(e, 'SEND_FAILED'));
       } finally {
         setSending(false);
       }
     },
-    [client, herName, hisName],
+    [client],
   );
 
   const send = useCallback(
@@ -355,7 +373,7 @@ export function useConversation(client: ChatClient): UseConversation {
         cid = await ensureConversation();
       } catch (e) {
         setMessages((m) => setStatus(m, clientId, 'failed'));
-        setError(e instanceof Error ? e.message : 'Nie udało się utworzyć rozmowy.');
+        setError(errorCode(e, 'CREATE_FAILED'));
         return;
       }
       await runSend(cid, clientId, author, trimmed);
@@ -373,7 +391,7 @@ export function useConversation(client: ChatClient): UseConversation {
         cid = await ensureConversation();
       } catch (e) {
         setMessages((m) => setStatus(m, clientId, 'failed'));
-        setError(e instanceof Error ? e.message : 'Nie udało się utworzyć rozmowy.');
+        setError(errorCode(e, 'CREATE_FAILED'));
         return;
       }
       await runSend(cid, clientId, msg.author as SenderAuthor, msg.text);
@@ -403,7 +421,8 @@ export function useConversation(client: ChatClient): UseConversation {
       setAdvisorModeState(mode);
       const tok = accessTokenRef.current ?? undefined;
       try {
-        await client.setAdvisorMode(conversationId, mode, tok);
+        // locale → język deterministycznego pożegnania doradcy przy pauzie
+        await client.setAdvisorMode(conversationId, mode, tok, currentLocale());
         // „tylko słucha": doradca milknie → wyczyść status sceniczny i pokaż pożegnanie
         if (mode === 'PAUSED') {
           setAdvisorTyping(false);
@@ -411,7 +430,7 @@ export function useConversation(client: ChatClient): UseConversation {
           setMessages(await client.getHistory(conversationId, tok));
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Nie udało się zmienić trybu doradcy.');
+        setError(errorCode(e, 'MODE_FAILED'));
       }
     },
     [client, conversationId],

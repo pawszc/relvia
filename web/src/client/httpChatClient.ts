@@ -2,6 +2,7 @@ import type {
   ChatClient,
   ChatMessage,
   ChatStreamEvent,
+  Locale,
   ParkedAction,
   SendMessageRequest,
   UiConversationState,
@@ -17,6 +18,29 @@ import type {
  */
 
 const BASE = '/chat';
+
+/**
+ * STABILNY kod błędu z odpowiedzi backendu — do tłumaczenia przez UI (errors.* w i18n).
+ * Backend odrzuca akcje komunikatem `KOD: opis` (np. 'RATE_LIMIT: zbyt szybko…');
+ * wyciągamy sam KOD i nigdy nie pokazujemy użytkownikowi surowego tekstu/techników.
+ */
+async function errorCodeFrom(r: Response): Promise<string> {
+  try {
+    const j = (await r.json()) as { error?: { message?: unknown } };
+    const msg = String(j?.error?.message ?? '');
+    const m = msg.match(/^([A-Z][A-Z0-9_]*)\s*:/);
+    if (m) return m[1];
+  } catch {
+    // brak/niepoprawny JSON — zostaje kod generyczny
+  }
+  return 'HTTP_ERROR';
+}
+
+/** Error z property `code` — useConversation tłumaczy kod przy renderze. */
+async function httpError(action: string, r: Response): Promise<Error & { code: string }> {
+  const code = await errorCodeFrom(r);
+  return Object.assign(new Error(`${action}: HTTP ${r.status} (${code})`), { code });
+}
 
 /** Wiersz OData (ID, conversation_ID, …) → ChatMessage z kontraktu. */
 function toMessage(row: Record<string, unknown>): ChatMessage {
@@ -72,13 +96,14 @@ async function* parseSSE(body: ReadableStream<Uint8Array>): AsyncIterable<ChatSt
 }
 
 export const httpChatClient: ChatClient = {
-  async startConversation(title?: string) {
+  async startConversation(title?: string, locale?: Locale) {
     const r = await fetch(`${BASE}/startConversation`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: title ?? null }),
+      // locale UI → metadane konwersacji (język przyszłych odpowiedzi doradcy)
+      body: JSON.stringify({ title: title ?? null, locale: locale ?? null }),
     });
-    if (!r.ok) throw new Error(`startConversation: HTTP ${r.status}`);
+    if (!r.ok) throw await httpError('startConversation', r);
     const j = await r.json();
     return {
       conversationId: j.conversationId as string,
@@ -96,7 +121,7 @@ export const httpChatClient: ChatClient = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ conversationId, accessToken }),
     });
-    if (!r.ok) throw new Error(`getHistory: HTTP ${r.status}`);
+    if (!r.ok) throw await httpError('getHistory', r);
     const j = await r.json();
     // akcja CAP zwraca tablicę w `value`
     const rows = (j.value ?? j) as Record<string, unknown>[];
@@ -104,13 +129,16 @@ export const httpChatClient: ChatClient = {
   },
 
   async *sendMessage(req: SendMessageRequest): AsyncIterable<ChatStreamEvent> {
+    // `req` niesie też `locale` (język UI w chwili wysyłki) — patrz SendMessageRequest
     const r = await fetch(`${BASE}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
       body: JSON.stringify(req),
     });
     if (!r.ok || !r.body) {
-      yield { type: 'error', code: 'HTTP_ERROR', message: `sendMessage: HTTP ${r.status}` };
+      // stabilny KOD (np. RATE_LIMIT / MESSAGE_TOO_LONG / FORBIDDEN) — tłumaczy UI
+      const code = r.ok ? 'HTTP_ERROR' : await errorCodeFrom(r);
+      yield { type: 'error', code, message: `sendMessage: HTTP ${r.status}` };
       return;
     }
     yield* parseSSE(r.body);
@@ -122,7 +150,7 @@ export const httpChatClient: ChatClient = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ conversationId, accessToken }),
     });
-    if (!r.ok) throw new Error(`conversationState: HTTP ${r.status}`);
+    if (!r.ok) throw await httpError('conversationState', r);
     const j = await r.json();
     return {
       phase: j.phase ?? 'OPENING',
@@ -143,15 +171,21 @@ export const httpChatClient: ChatClient = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ conversationId, topicId, action, accessToken }),
     });
-    if (!r.ok) throw new Error(`resolveParkedTopic: HTTP ${r.status}`);
+    if (!r.ok) throw await httpError('resolveParkedTopic', r);
   },
 
-  async setAdvisorMode(conversationId: string, mode, accessToken?: string): Promise<void> {
+  async setAdvisorMode(
+    conversationId: string,
+    mode,
+    accessToken?: string,
+    locale?: Locale,
+  ): Promise<void> {
     const r = await fetch(`${BASE}/setAdvisorMode`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conversationId, mode, accessToken }),
+      // locale → język deterministycznego pożegnania doradcy przy pauzie
+      body: JSON.stringify({ conversationId, mode, accessToken, locale: locale ?? null }),
     });
-    if (!r.ok) throw new Error(`setAdvisorMode: HTTP ${r.status}`);
+    if (!r.ok) throw await httpError('setAdvisorMode', r);
   },
 };

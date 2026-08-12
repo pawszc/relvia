@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { UiMessage } from '../hooks/useConversation';
 import MessageBubble from './MessageBubble';
 import { advisorSide } from './advisorSide';
@@ -23,6 +24,7 @@ interface Props {
 }
 
 export default function MessageList({ messages, herName, hisName, advisorTyping, onRetry }: Props) {
+  const { t } = useTranslation();
   // pusty <div> na samym dole, do którego przewijamy
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -43,8 +45,9 @@ export default function MessageList({ messages, herName, hisName, advisorTyping,
         {messages.length === 0 && !advisorTyping && (
           // dwie połówki straddlujące linię środkową kanału (lewa = brzeg Ony, prawa = On)
           <div className="empty-state">
-            <span className="empty-left">Wybierzcie,&nbsp;kto&nbsp;zaczyna</span>
-            <span className="empty-right">albo&nbsp;zacznijcie&nbsp;wspólnie</span>
+            {/* tłumaczenia zawierają twarde spacje (NBSP) — jak dawne &nbsp; */}
+            <span className="empty-left">{t('conversation.emptyLeft')}</span>
+            <span className="empty-right">{t('conversation.emptyRight')}</span>
           </div>
         )}
 

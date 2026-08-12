@@ -1,20 +1,14 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
-import type { AdvisorDecisionType, AdvisorMode, ChatClient, Phase, SenderAuthor } from '@shared/chat-contract';
-import { useConversation, type LastDecision } from '../hooks/useConversation';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
+import type { AdvisorMode, ChatClient, Phase, SenderAuthor } from '@shared/chat-contract';
+import { useConversation, type AdvisorStatus, type LastDecision } from '../hooks/useConversation';
 import MessageList from './MessageList';
 import Composer from './Composer';
 import Avatar from './Avatar';
 import SafetyFooter from './SafetyFooter';
+import LanguageSwitcher from './LanguageSwitcher';
 
-/** Etykiety faz — dyskretny wskaźnik bieżącego miękkiego celu rozmowy. */
-const PHASE_LABEL: Record<Phase, string> = {
-  OPENING: 'Otwarcie',
-  PERSPECTIVE_A: 'Perspektywa I',
-  PERSPECTIVE_B: 'Perspektywa II',
-  PARAPHRASE: 'Parafraza',
-  CORE: 'Sedno',
-  AGREEMENT: 'Ustalenia',
-};
 const PHASE_ORDER: Phase[] = ['OPENING', 'PERSPECTIVE_A', 'PERSPECTIVE_B', 'PARAPHRASE', 'CORE', 'AGREEMENT'];
 
 // Flaga: przełącznik trybu doradcy (Rozmawia/Tylko słucha) jest na razie ukryty.
@@ -26,22 +20,23 @@ const SHOW_ADVISOR_MODE_TOGGLE = import.meta.env.VITE_ADVISOR_MODE_TOGGLE === 't
 // go użytkownikom, ale łatwo włączyć do testów: VITE_PHASE_PROGRESS=true (np. w web/.env.local).
 const SHOW_PHASE_PROGRESS = import.meta.env.VITE_PHASE_PROGRESS === 'true';
 
+// Typy decyzji z dedykowaną etykietą statusu „listening" (reszta → advisorStatus.listening).
+const LISTENING_LABEL_KEY: Partial<Record<string, string>> = {
+  DEEPEN: 'advisorStatus.probing',
+  INTERVENE: 'advisorStatus.calming',
+};
+
 /**
  * „Inteligentny kompozytor" (faza 2): placeholder naprowadza na konstruktywny krok
  * wg ostatniej decyzji reżysera. Pokazuje się tylko przy pustym polu (placeholder),
  * więc nie przeszkadza w pisaniu. Zero tokenów — czysto na danych, które już mamy.
+ * Statyczne fallbacki tłumaczy i18n (placeholders.*); composerHint z modelu przychodzi
+ * już w języku rozmowy (dyrektywa językowa w promptcie decide).
  */
-const DECISION_PLACEHOLDER: Partial<Record<AdvisorDecisionType, string>> = {
-  DEEPEN: 'Śmiało, rozwiń to — co czujesz najmocniej?',
-  CLARIFY: 'Napisz konkretnie — jeden przykład zamiast oceny…',
-  NARROW: 'Jeden konkretny przykład z ostatniego tygodnia…',
-  REFRAME: 'Powiedz wprost, o co Ci najbardziej chodzi…',
-  CHOOSE: 'Który wątek jest teraz dla Was najważniejszy?',
-  PROPOSE: 'Zaproponuj mały krok do wypróbowania…',
-  INTERVENE: 'Spróbuj zacząć od „czuję…" zamiast oceny…',
-};
+const DECISION_PLACEHOLDER_KEYS = new Set(['DEEPEN', 'CLARIFY', 'NARROW', 'REFRAME', 'CHOOSE', 'PROPOSE', 'INTERVENE']);
 
 function composerPlaceholder(p: {
+  t: TFunction;
   advisorMode: AdvisorMode;
   idle: boolean;
   lastDecision: LastDecision | null;
@@ -49,16 +44,27 @@ function composerPlaceholder(p: {
   herName: string;
   hisName: string;
 }): string {
-  const { advisorMode, idle, lastDecision, author, herName, hisName } = p;
-  const nameOf = (a: SenderAuthor) => (a === 'HER' ? herName : a === 'HIM' ? hisName : 'oboje');
-  if (advisorMode === 'PAUSED') return 'Piszcie do siebie — doradca tylko słucha…';
-  if (idle) return 'Wróćcie, gdy będziecie gotowi — napiszcie razem, jak poszło…';
+  const { t, advisorMode, idle, lastDecision, author, herName, hisName } = p;
+  const nameOf = (a: SenderAuthor) => (a === 'HER' ? herName : a === 'HIM' ? hisName : t('common.both'));
+  if (advisorMode === 'PAUSED') return t('placeholders.paused');
+  if (idle) return t('placeholders.idle');
   // podpowiedź z modelu (kontekstowa) ma pierwszeństwo; niżej — statyczny fallback
   if (lastDecision?.composerHint) return lastDecision.composerHint;
-  const t = lastDecision?.type;
-  if (t === 'ASK_OTHER' && author !== 'TOGETHER') return `Twoja kolej, ${nameOf(author)} — jak Ty to widzisz?`;
-  if (t && DECISION_PLACEHOLDER[t]) return DECISION_PLACEHOLDER[t]!;
-  return author === 'TOGETHER' ? 'Piszecie razem…' : `Napisz jako ${nameOf(author)}…`;
+  const type = lastDecision?.type;
+  if (type === 'ASK_OTHER' && author !== 'TOGETHER') return t('placeholders.askOther', { name: nameOf(author) });
+  if (type && DECISION_PLACEHOLDER_KEYS.has(type)) return t(`placeholders.${type}`);
+  return author === 'TOGETHER' ? t('placeholders.together') : t('placeholders.writeAs', { name: nameOf(author) });
+}
+
+/** Etykieta statusu scenicznego (poza torem „czeka na osobę" — ten ma własny render). */
+function statusLabelFor(t: TFunction, status: AdvisorStatus): string | null {
+  if (status.kind === 'waiting') return t('advisorStatus.silent');
+  if (status.kind === 'listening') {
+    const key = (status.decisionType && LISTENING_LABEL_KEY[status.decisionType]) || 'advisorStatus.listening';
+    return t(key);
+  }
+  if (status.kind === 'typing') return t('advisorStatus.typing');
+  return null;
 }
 
 /**
@@ -76,6 +82,7 @@ interface Props {
 }
 
 export default function ChatScreen({ client }: Props) {
+  const { t, i18n } = useTranslation();
   // cała mechanika rozmowy żyje w hooku — w tym imiona pary (z encji Conversations)
   const {
     messages,
@@ -96,6 +103,11 @@ export default function ChatScreen({ client }: Props) {
     resolveParked,
     setMode,
   } = useConversation(client);
+
+  // Imiona do WYŚWIETLANIA: domyślne markery z bazy ('Ona'/'On' — patrz schema.cds)
+  // tłumaczymy na etykiety ról w bieżącym języku; własne imiona pary zostają bez zmian.
+  const displayHer = herName === 'Ona' ? t('common.her') : herName;
+  const displayHis = hisName === 'On' ? t('common.him') : hisName;
 
   // który autor jest aktywny w kompozytorze (HER / TOGETHER / HIM) + treść pola
   const [author, setAuthor] = useState<SenderAuthor>('HER');
@@ -121,28 +133,25 @@ export default function ChatScreen({ client }: Props) {
   }, [idle]);
 
   const handleSend = () => {
-    const t = text.trim();
-    if (!t) return;
-    send(author, t);
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    send(author, trimmed);
     setText('');
   };
 
-  // status "sceniczny" reżysera: pokazujemy tylko gdy coś znaczy (nie 'idle')
-  const statusLabel =
-    advisorStatus.kind === 'waiting'
-      ? (advisorStatus.hint ?? 'Doradca czeka…')
-      : advisorStatus.kind === 'listening'
-        ? (advisorStatus.hint ?? 'Doradca słucha…')
-        : advisorStatus.kind === 'typing'
-          ? 'Doradca pisze…'
-          : null;
+  // status "sceniczny" reżysera: pokazujemy tylko gdy coś znaczy (nie 'idle');
+  // tor „czeka na osobę" (waitingFor) ma osobny render z awatarami niżej
+  const statusLabel = statusLabelFor(t, advisorStatus);
 
   // osoba, na którą doradca czeka (do pulsującego awatara w statusie obecności)
-  const waitFor = lastDecision?.nextSpeaker;
+  const waitFor = advisorStatus.kind === 'waiting' ? advisorStatus.waitingFor : undefined;
+
+  // komunikat błędu: stan trzyma KOD — tekst tłumaczymy dopiero przy renderze
+  const errorLabel = error ? (i18n.exists(`errors.${error}`) ? t(`errors.${error}`) : t('errors.generic')) : null;
 
   return (
     <div className="card">
-      {/* pasek górny: brand lockup (Venn + nazwa) + klaster awatarów Doradca·Ona·On */}
+      {/* pasek górny: brand lockup (Venn + nazwa) + przełącznik języka + klaster awatarów */}
       <header className="header">
         <div className="brand">
           <span className="brand-venn" aria-hidden="true">
@@ -157,12 +166,13 @@ export default function ChatScreen({ client }: Props) {
           </span>
         </div>
         <div className="header-right">
+          <LanguageSwitcher />
           {/* tryb doradcy (krok 4): trwały przełącznik „rozmawia" / „tylko słucha".
               „tylko słucha" = doradca całkowicie wyłączony (zero wywołań modelu).
               Na razie ukryty za flagą SHOW_ADVISOR_MODE_TOGGLE — logika zostaje w kodzie. */}
           {SHOW_ADVISOR_MODE_TOGGLE && messages.length > 0 && (
-            <div className="advisor-toggle" role="group" aria-label="Tryb doradcy">
-              <span className="advisor-toggle-label">Doradca:</span>
+            <div className="advisor-toggle" role="group" aria-label={t('header.advisorToggleGroup')}>
+              <span className="advisor-toggle-label">{t('header.advisorLabel')}</span>
               <div className="advisor-toggle-seg">
                 <button
                   type="button"
@@ -170,7 +180,7 @@ export default function ChatScreen({ client }: Props) {
                   aria-pressed={advisorMode === 'LEADING'}
                   onClick={() => setMode('LEADING')}
                 >
-                  Rozmawia
+                  {t('header.modeLeading')}
                 </button>
                 <button
                   type="button"
@@ -178,15 +188,15 @@ export default function ChatScreen({ client }: Props) {
                   aria-pressed={advisorMode === 'PAUSED'}
                   onClick={() => setMode('PAUSED')}
                 >
-                  Tylko słucha
+                  {t('header.modeListening')}
                 </button>
               </div>
             </div>
           )}
-          <div className="avatars" title={`Doradca · ${herName} · ${hisName}`}>
+          <div className="avatars" title={t('header.avatarsTitle', { her: displayHer, his: displayHis })}>
             <Avatar who="ADVISOR" size={34} className="av-stack" />
-            <Avatar who="HER" size={34} alt={herName} className="av-stack" />
-            <Avatar who="HIM" size={34} alt={hisName} className="av-stack" />
+            <Avatar who="HER" size={34} alt={displayHer} className="av-stack" />
+            <Avatar who="HIM" size={34} alt={displayHis} className="av-stack" />
           </div>
         </div>
       </header>
@@ -194,27 +204,27 @@ export default function ChatScreen({ client }: Props) {
       {/* wstęga faz — bieżący miękki cel rozmowy (postęp Otwarcie → Ustalenia).
           Ukryta za flagą SHOW_PHASE_PROGRESS — domyślnie niewidoczna dla użytkowników. */}
       {SHOW_PHASE_PROGRESS && messages.length > 0 && (
-        <div className="phase-ribbon" title={`Faza ${PHASE_ORDER.indexOf(phase) + 1}/6`}>
-          <span className="phase-ribbon-label">Faza</span>
+        <div className="phase-ribbon" title={t('phases.ribbonTitle', { n: PHASE_ORDER.indexOf(phase) + 1, total: 6 })}>
+          <span className="phase-ribbon-label">{t('phases.ribbonLabel')}</span>
           <div className="phase-track">
             {PHASE_ORDER.map((p, i) => (
               <Fragment key={p}>
                 <span
                   className={`phase-bar ${i <= PHASE_ORDER.indexOf(phase) ? 'is-on' : ''} ${p === phase ? 'is-active' : ''}`}
                 />
-                {p === phase && <span className="phase-name">{PHASE_LABEL[p]}</span>}
+                {p === phase && <span className="phase-name">{t(`phases.${p}`)}</span>}
               </Fragment>
             ))}
           </div>
-          <span className="phase-ribbon-goal">→ Sedno · Ustalenia</span>
+          <span className="phase-ribbon-goal">{t('phases.ribbonGoal')}</span>
         </div>
       )}
 
       {/* lista wiadomości; onRetry pozwala ponowić wiadomość ze statusem 'failed' */}
       <MessageList
         messages={messages}
-        herName={herName}
-        hisName={hisName}
+        herName={displayHer}
+        hisName={displayHis}
         advisorTyping={advisorTyping}
         onRetry={retry}
       />
@@ -222,18 +232,24 @@ export default function ChatScreen({ client }: Props) {
       {/* panel „do omówienia później" — zaparkowane dygresje, nic nie ginie */}
       {parkedTopics.length > 0 && (
         <div className="parked-panel">
-          <div className="parked-title">Do omówienia później</div>
-          {parkedTopics.map((t) => (
-            <div key={t.id} className="parked-item">
-              <span className="parked-text">{t.text}</span>
+          <div className="parked-title">{t('parked.title')}</div>
+          {parkedTopics.map((topic) => (
+            <div key={topic.id} className="parked-item">
+              <span className="parked-text">{topic.text}</span>
               <span className="parked-actions">
-                <button type="button" className="parked-btn parked-promote" onClick={() => resolveParked(t.id, 'PROMOTE')}>
-                  wróćmy teraz
+                <button type="button" className="parked-btn parked-promote" onClick={() => resolveParked(topic.id, 'PROMOTE')}>
+                  {t('parked.promote')}
                 </button>
-                <button type="button" className="parked-btn" onClick={() => resolveParked(t.id, 'RESOLVED')}>
-                  załatwione
+                <button type="button" className="parked-btn" onClick={() => resolveParked(topic.id, 'RESOLVED')}>
+                  {t('parked.resolved')}
                 </button>
-                <button type="button" className="parked-btn parked-dismiss" onClick={() => resolveParked(t.id, 'DISMISSED')} title="odrzuć">
+                <button
+                  type="button"
+                  className="parked-btn parked-dismiss"
+                  onClick={() => resolveParked(topic.id, 'DISMISSED')}
+                  title={t('parked.dismiss')}
+                  aria-label={t('parked.dismiss')}
+                >
                   ✕
                 </button>
               </span>
@@ -245,17 +261,17 @@ export default function ChatScreen({ client }: Props) {
       {/* status sceniczny reżysera — obecność, nie spinner (słucha / czeka / pisze).
           Przy oddaniu głosu pokazujemy awatar doradcy + pulsujący awatar osoby, na
           którą czekamy (zamiast samego imienia). Pozostałe stany: kropka + tekst. */}
-      {advisorStatus.kind === 'waiting' && waitFor && /czeka na/i.test(advisorStatus.hint ?? '') ? (
+      {waitFor ? (
         <div className="advisor-status advisor-status-waiting advisor-presence">
           <Avatar who="ADVISOR" size={22} />
-          <span>{waitFor === 'TOGETHER' ? 'czeka na Waszą wspólną odpowiedź' : 'czeka na odpowiedź'}</span>
+          <span>{waitFor === 'TOGETHER' ? t('advisorStatus.presenceWaitBoth') : t('advisorStatus.presenceWaitFor')}</span>
           {waitFor === 'TOGETHER' ? (
             <span className="pill-pair">
-              <Avatar who="HER" size={22} pulse alt={herName} />
-              <Avatar who="HIM" size={22} pulse alt={hisName} />
+              <Avatar who="HER" size={22} pulse alt={displayHer} />
+              <Avatar who="HIM" size={22} pulse alt={displayHis} />
             </span>
           ) : (
-            <Avatar who={waitFor} size={22} pulse alt={waitFor === 'HER' ? herName : hisName} />
+            <Avatar who={waitFor} size={22} pulse alt={waitFor === 'HER' ? displayHer : displayHis} />
           )}
         </div>
       ) : (
@@ -267,8 +283,8 @@ export default function ChatScreen({ client }: Props) {
         )
       )}
 
-      {/* globalny komunikat błędu (np. zerwany strumień) */}
-      {error && <div className="error-banner">{error}</div>}
+      {/* globalny komunikat błędu (np. zerwany strumień) — kod tłumaczony przy renderze */}
+      {errorLabel && <div className="error-banner">{errorLabel}</div>}
 
       {/* kompozytor; blokujemy na czas wysyłki (sending) i zanim hook jest gotów */}
       <Composer
@@ -276,10 +292,10 @@ export default function ChatScreen({ client }: Props) {
         onAuthorChange={setAuthor}
         text={text}
         onTextChange={setText}
-        placeholder={composerPlaceholder({ advisorMode, idle, lastDecision, author, herName, hisName })}
+        placeholder={composerPlaceholder({ t, advisorMode, idle, lastDecision, author, herName: displayHer, hisName: displayHis })}
         onSend={handleSend}
-        herName={herName}
-        hisName={hisName}
+        herName={displayHer}
+        hisName={displayHis}
         disabled={!ready || sending}
       />
 

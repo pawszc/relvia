@@ -12,10 +12,14 @@ export default defineConfig({
   server: {
     // pozwól importować z ../shared
     fs: { allow: ['..'] },
-    // proxy do backendu CAP (dev) — SSE działa bo http-proxy streamuje
+    // dev zdalny: '.ts.net' = hosty Tailscale (osiągalne tylko z własnego tailnetu).
+    // Inne hosty dorzuca się przez VITE_ALLOWED_HOSTS=host1,host2.
+    allowedHosts: ['.ts.net', ...(process.env.VITE_ALLOWED_HOSTS?.split(',').filter(Boolean) ?? [])],
+    // proxy do backendu CAP (dev) — SSE działa bo http-proxy streamuje.
+    // Port da się nadpisać (CAP_PORT), gdy 4004 zajmuje inny projekt.
     proxy: {
       '/chat': {
-        target: 'http://localhost:4004',
+        target: `http://localhost:${process.env.CAP_PORT ?? 4004}`,
         changeOrigin: true,
       },
     },

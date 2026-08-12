@@ -19,6 +19,10 @@ npm run test:eval -- --id=A1,A3        # wybrane scenariusze (smoke test)
 npm run test:eval -- --no-judge        # tylko klasyfikacja (0 tokenów judge'a)
 npm run test:eval:addr                 # eval ADRESAT/RODZAJ (rozjazd decyzja↔generacja)
 npm run test:eval:addr -- --runs=8     # więcej powtórzeń (niedeterminizm)
+
+# LIVE i18n smoke (OPT-IN, twardy limit 3.00 USD, maks. 3 wywołania — po 1 na pl/en/de;
+# ocena języka lokalną heurystyką, BEZ drugiego modelu; nie odpala się w npm test/CI):
+RUN_LIVE_AI_TESTS=true npm run test:ai:i18n:live
 ```
 
 ### Eval ADRESAT/RODZAJ ([addressee.js](eval/addressee.js))

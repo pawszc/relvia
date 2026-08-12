@@ -14,6 +14,9 @@ const { activeModel, decideModel, generateModel } = require('./advisor/models');
 const CONFIG = require('./advisor/config');
 const { checkAndRecord } = require('./rate-limit');
 const { sanitizeAdvisor } = require('./sanitize');
+// i18n: JEDNO źródło prawdy locale (pl/en/de) + zatwierdzone teksty deterministyczne
+const { normalizeLocale, normalizeLocaleOrDefault } = require('../shared/locales.mjs');
+const { sendoffText, budgetText, isBudgetText } = require('./advisor/texts');
 
 /**
  * RATE LIMIT (in-memory): ostatni znacznik czasu wiadomości per konwersacja.
@@ -38,17 +41,18 @@ function sse(res, event, data) {
   res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
-/** Ciepłe pożegnanie doradcy przy wejściu w pauzę (krok 4). Szablon — 0 tokenów. */
-const SENDOFF_TEXT =
-  'Zostawiam Was z tym we dwoje — porozmawiajcie między sobą, choćby na spokojnie poza aplikacją. Gdy zechcecie, żebym znów się włączył, przełączcie mnie na „rozmawia" i po prostu napiszcie, jak Wam poszło.';
+// Teksty deterministyczne widoczne dla pary (pożegnanie przy pauzie, notka
+// budżetowa) mają zatwierdzone wersje pl/en/de w srv/advisor/texts.js.
 
 /**
- * Łagodne wejście w read-only po osiągnięciu progu kosztu. Ten SAM komunikat dla
- * obu progów: budżetu per-sesja ($0,50) i globalnego dziennego limitu aplikacji ($20/24h).
- * Prosty język, bez technikaliów. Szablon — 0 tokenów.
+ * SKUTECZNE locale tury: wartość z REQUESTU ma pierwszeństwo (zmiana języka
+ * obowiązuje od następnej odpowiedzi), potem locale zapisane na konwersacji,
+ * ostatecznie 'pl' (kompatybilność ze starszym klientem). Wynik ZAWSZE przechodzi
+ * przez normalizeLocale — do promptu/tekstów nigdy nie trafia surowy tekst usera.
  */
-const BUDGET_TEXT =
-  'Na dziś musimy zrobić tu pauzę — skończyła nam się pula, którą cała aplikacja ma na rozmowy na dziś. To, co sobie powiedzieliście, zostaje z Wami. Wróćcie proszę później, najlepiej jutro — chętnie znów Wam wtedy potowarzyszę.';
+function effectiveLocale(reqLocale, conv) {
+  return normalizeLocale(reqLocale) ?? normalizeLocaleOrDefault(conv && conv.locale);
+}
 
 /** Wiersz DB → kształt ChatMessage z kontraktu (shared/chat-contract.ts). */
 const toContract = (m) => ({
@@ -112,7 +116,7 @@ module.exports = function (srv) {
   }
 
   /** Zapis zmian stanu po decyzji reżysera (faza, kotwica, licznik, aktywność). */
-  async function persistState(conversationId, decision) {
+  async function persistState(conversationId, decision, locale) {
     const patch = { lastActivityAt: new Date().toISOString() };
     if (decision.phase) patch.phase = decision.phase;
     if (decision.topic) patch.topic = decision.topic;
@@ -131,7 +135,7 @@ module.exports = function (srv) {
       patch.decideCacheReadTokens = { '+=': u.cacheReadTokens || 0 };
       patch.decideCacheCreationTokens = { '+=': u.cacheCreationTokens || 0 };
       LOG.info(
-        `decyzja (konw. ${conversationId}) [${decideModel()}]: in=${u.inputTokens || 0} out=${u.outputTokens || 0} ~$${costUsd(u, decideModel()).toFixed(6)}`,
+        `decyzja (konw. ${conversationId}) [${decideModel()}] [locale=${locale || 'pl'}]: in=${u.inputTokens || 0} out=${u.outputTokens || 0} ~$${costUsd(u, decideModel()).toFixed(6)}`,
       );
     }
 
@@ -159,11 +163,11 @@ module.exports = function (srv) {
   }
 
   /** Loguje zużycie tokenów: tej wiadomości + zagregowane dla całej konwersacji. */
-  async function logUsage(conversationId, advisorId, usage) {
+  async function logUsage(conversationId, advisorId, usage, locale) {
     const c = usageColumns(usage);
     const model = generateModel(); // wiadomość doradcy = warstwa generacji
     LOG.info(
-      `wiadomość ${advisorId} (konw. ${conversationId}) [${model}]: in=${c.inputTokens} out=${c.outputTokens} cacheRead=${c.cacheReadTokens} cacheCreate=${c.cacheCreationTokens} ~$${costUsd(c, model).toFixed(6)}`,
+      `wiadomość ${advisorId} (konw. ${conversationId}) [${model}] [locale=${locale || 'pl'}]: in=${c.inputTokens} out=${c.outputTokens} cacheRead=${c.cacheReadTokens} cacheCreate=${c.cacheCreationTokens} ~$${costUsd(c, model).toFixed(6)}`,
     );
     // „łącznie" = generacja + DECYZJA, każda swoim modelem (wcześniej sumowało tylko
     // generację → zaniżenie o ~połowę). Utrwalamy też koszt na konwersacji.
@@ -261,7 +265,8 @@ module.exports = function (srv) {
    * + opcjonalna notka doradcy (BUDGET_TEXT, 0 tokenów). ZERO wywołań modelu.
    * Zwraca wynik handlera (SSE: kończy res i zwraca undefined; bez SSE: JSON).
    */
-  async function readOnlyReply(req, userRow, conversationId, seq, insertNotice) {
+  async function readOnlyReply(req, userRow, conversationId, seq, insertNotice, locale) {
+    const noticeText = budgetText(locale); // zatwierdzona wersja pl/en/de
     let notice = null;
     if (insertNotice) {
       const noticeId = cds.utils.uuid();
@@ -271,7 +276,7 @@ module.exports = function (srv) {
         conversation_ID: conversationId,
         seq: noticeSeq,
         author: 'ADVISOR',
-        text: BUDGET_TEXT,
+        text: noticeText,
         kind: 'FULL',
       });
       notice = { id: noticeId, seq: noticeSeq };
@@ -295,7 +300,7 @@ module.exports = function (srv) {
             createdAt: new Date().toISOString(),
           },
         });
-        sse(res, 'advisor.end', { text: BUDGET_TEXT, finishReason: 'end_turn', kind: 'FULL' });
+        sse(res, 'advisor.end', { text: noticeText, finishReason: 'end_turn', kind: 'FULL' });
       }
       res.end();
       return;
@@ -347,7 +352,9 @@ module.exports = function (srv) {
     // sekret-token dostępu do tej konwersacji (capability) — zwracany klientowi,
     // wymagany przy każdej kolejnej akcji. Niezgadywalny (UUID v4).
     const accessToken = cds.utils.uuid();
-    await INSERT.into(Conversations).entries({ ID, title: req.data.title, accessToken });
+    // locale UI klienta → metadane sesji (walidacja: nieznane/brak ⇒ 'pl')
+    const locale = normalizeLocaleOrDefault(req.data.locale);
+    await INSERT.into(Conversations).entries({ ID, title: req.data.title, accessToken, locale });
     // odczytujemy imiona (domyślne Ona/On z schema.cds) i zwracamy je do UI
     const conv = await SELECT.one.from(Conversations).where({ ID });
     return { conversationId: ID, herName: conv.herName, hisName: conv.hisName, accessToken };
@@ -402,7 +409,13 @@ module.exports = function (srv) {
 
     // imiona pary z konwersacji → kontekst dla warstwy AI (prefiksy mówców)
     const conv = await SELECT.one.from(Conversations).where({ ID: conversationId });
-    const advisorCtx = { herName: conv && conv.herName, hisName: conv && conv.hisName };
+    // JĘZYK tej tury: request > konwersacja > 'pl'. Zmianę utrwalamy na konwersacji
+    // (obowiązuje też dla kolejnych tur starszego klienta bez pola locale).
+    const locale = effectiveLocale(req.data.locale, conv);
+    if (conv && conv.locale !== locale) {
+      await UPDATE(Conversations).set({ locale }).where({ ID: conversationId });
+    }
+    const advisorCtx = { herName: conv && conv.herName, hisName: conv && conv.hisName, locale };
 
     // „TYLKO SŁUCHA" (PAUSED): doradca CAŁKOWICIE wyłączony — ZERO wywołań modelu.
     // Para pisze między sobą; zapisujemy wiadomość i kończymy. Powrót = przełącznik na
@@ -449,15 +462,17 @@ module.exports = function (srv) {
           // tylko globalny (bez flagi) → notka raz na konwersację: dokładamy, gdy
           // ostatnia DYMKA DORADCY nie jest już tą notką (dedup, żeby nie spamować).
           // Uwaga: wiadomość pary z tej tury jest już zapisana, więc filtrujemy po ADVISOR.
+          // isBudgetText porównuje ze WSZYSTKIMI wersjami językowymi (para mogła
+          // zmienić język od poprzedniej notki — to wciąż ta sama notka).
           const lastAdv = (
             await SELECT.from(Messages)
               .where({ conversation_ID: conversationId, author: 'ADVISOR' })
               .orderBy('seq desc')
               .limit(1)
           )[0];
-          insertNotice = !(lastAdv && lastAdv.text === BUDGET_TEXT);
+          insertNotice = !(lastAdv && isBudgetText(lastAdv.text));
         }
-        return readOnlyReply(req, userRow, conversationId, seq, insertNotice);
+        return readOnlyReply(req, userRow, conversationId, seq, insertNotice, locale);
       }
     }
 
@@ -477,7 +492,7 @@ module.exports = function (srv) {
     }
 
     // persystencja stanu + ewentualne zaparkowanie dygresji
-    await persistState(conversationId, decision);
+    await persistState(conversationId, decision, locale);
     await recordUsage(conversationId, 'decide', decision.usage); // ledger globalnego limitu
     const phaseChanged = decision.phase && decision.phase !== state.phase;
     let parkedTopics = state.parkedTopics;
@@ -572,7 +587,7 @@ module.exports = function (srv) {
         decisionType: decision.type,
         ...usageColumns(usage),
       });
-      await logUsage(conversationId, advisorId, usage);
+      await logUsage(conversationId, advisorId, usage, locale);
       await recordUsage(conversationId, 'generate', usage); // ledger globalnego limitu
       sse(res, 'advisor.end', { text: acc, finishReason: 'end_turn', kind: decision.kind });
       res.end();
@@ -603,7 +618,7 @@ module.exports = function (srv) {
       decisionType: decision.type,
       ...usageColumns(usage),
     });
-    await logUsage(conversationId, advisorId, usage);
+    await logUsage(conversationId, advisorId, usage, locale);
     await recordUsage(conversationId, 'generate', usage); // ledger globalnego limitu
     return { advisorMessageId: advisorId };
   });
@@ -644,18 +659,20 @@ module.exports = function (srv) {
   srv.on('setAdvisorMode', async (req) => {
     const { conversationId, mode, accessToken } = req.data;
     if (!['LEADING', 'LISTENING', 'PAUSED'].includes(mode)) return req.reject(400, 'INVALID_MODE');
-    await assertAccess(req, conversationId, accessToken);
+    const conv = await assertAccess(req, conversationId, accessToken);
     await UPDATE(Conversations)
       .set({ advisorMode: mode, lastActivityAt: new Date().toISOString() })
       .where({ ID: conversationId });
     // wejście w pauzę → doradca dopisuje ciepłe pożegnanie (widoczny skutek kliknięcia)
+    // w języku UI (request > konwersacja > pl) — zatwierdzone wersje w texts.js
     if (mode === 'PAUSED') {
+      const convRow = conv || (await SELECT.one.from(Conversations).where({ ID: conversationId }));
       await INSERT.into(Messages).entries({
         ID: cds.utils.uuid(),
         conversation_ID: conversationId,
         seq: await nextSeq(conversationId),
         author: 'ADVISOR',
-        text: SENDOFF_TEXT,
+        text: sendoffText(effectiveLocale(req.data.locale, convRow)),
         kind: 'FULL',
       });
     }

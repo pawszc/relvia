@@ -277,8 +277,11 @@ function chunkByWord(text: string): string[] {
   return text.match(/\S+\s*/g) ?? [text];
 }
 
+// UWAGA (i18n): mock jest narzędziem DEV (tryb offline bez tokenów) — jego kanned
+// odpowiedzi doradcy pozostają po polsku (bazie znaczeniowej). Kontrakt locale
+// przyjmuje i honoruje sygnaturowo (patrz ChatClient), ale nie tłumaczy treści.
 export const mockChatClient: ChatClient = {
-  async startConversation(_title?: string) {
+  async startConversation(_title?: string, _locale?) {
     const conversationId = uid();
     store.set(conversationId, []); // start od pustej rozmowy — bez seedowanych wiadomości
     stateStore.set(conversationId, freshState());
@@ -308,7 +311,7 @@ export const mockChatClient: ChatClient = {
     s.parkedTopics = s.parkedTopics.filter((p) => p.status === 'OPEN');
   },
 
-  async setAdvisorMode(conversationId: string, mode): Promise<void> {
+  async setAdvisorMode(conversationId: string, mode, _accessToken?, _locale?): Promise<void> {
     getStateFor(conversationId).advisorMode = mode;
     if (mode === 'PAUSED') {
       const history = store.get(conversationId) ?? [];

@@ -54,6 +54,52 @@ ANTHROPIC_API_KEY=sk-ant-... # wymagany tylko gdy ADVISOR=anthropic
 
 Plik wczytuje [`srv/server.js`](srv/server.js) (dotenv) zanim załadują się usługi — CAP nie robi tego sam.
 
+## Języki (i18n)
+
+Relvia działa w trzech językach: **polski (`pl`, domyślny), angielski (`en`), niemiecki (`de`)**.
+Polska treść jest bazą znaczeniową; niemiecki konsekwentnie nieformalny (du / ihr–euch).
+
+- **Jedno źródło prawdy locale:** [`shared/locales.mjs`](shared/locales.mjs) — lista języków,
+  `normalizeLocale()` (warianty regionalne: `pl-PL→pl`, `en-US/GB→en`, `de-DE/AT/CH→de`;
+  nieobsługiwane → `null`/fallback `pl`). Frontend importuje go przez alias `@shared`,
+  backend przez `require()` (Node ≥ 22.12 wspiera require-ESM).
+- **Kolejność wyboru języka** (frontend, `web/src/i18n/locale.ts`):
+  1. jawny wybór użytkownika z localStorage (klucz **`relvia.locale.v1`** — zapisywany
+     TYLKO z przełącznika, nigdy z auto-detekcji),
+  2. `navigator.languages` (w kolejności preferencji),
+  3. `navigator.language`,
+  4. fallback **`pl`**.
+- **Przełącznik** w nagłówku (Polski / English / Deutsch) — zmiana bez przeładowania,
+  nie resetuje rozmowy, ustawia `<html lang>`; historyczne wiadomości NIE są tłumaczone.
+- **Tłumaczenia UI:** i18next + react-i18next, zasoby w
+  [`web/src/i18n/locales/{pl,en,de}.json`](web/src/i18n/locales/) (init synchroniczny w
+  `main.tsx` — bez błysku złego języka). **Nowy język** = wpis w `SUPPORTED_LOCALES` +
+  nowy plik `xx.json` (identyczny zestaw kluczy — pilnuje test) + teksty w
+  `srv/advisor/texts.js` + dyrektywy językowe w `anthropicAdvisor.js`.
+- **Locale → backend/AI:** frontend dokłada `locale` do `startConversation`, `sendMessage`
+  i `setAdvisorMode`; backend waliduje (nieznane → `pl`), zapisuje na `Conversations.locale`
+  (wartość z requestu ma pierwszeństwo — zmiana języka obowiązuje od następnej odpowiedzi)
+  i przekazuje do promptów (`persona(locale)` / `decideSystem(locale)`) jako deterministyczną
+  dyrektywę języka odpowiedzi. Stary klient bez `locale` = `pl`. Deterministyczne komunikaty
+  (pożegnanie przy pauzie, notka budżetowa, fallback odmowy) mają zatwierdzone wersje
+  pl/en/de w [`srv/advisor/texts.js`](srv/advisor/texts.js). Błędy API idą jako stabilne
+  KODY (np. `RATE_LIMIT`), tłumaczone przez frontend.
+- ⚠ Numery pomocowe (112, 116 123, 800 120 002) są zweryfikowane dla **Polski** — wersje
+  en/de mówią to wprost; przy wejściu na inny rynek wymagają przeglądu (SAFETY.md).
+
+### Testy i18n
+
+- **Deterministyczne (0 tokenów, uruchamiane w `npm run test:all` i CI):** wybór języka,
+  rekurencyjna kompletność zasobów, komponenty/scenariusze przeglądarkowe (Vitest + jsdom;
+  repo nie ma osobnego narzędzia E2E), kontrakt locale w backendzie
+  (`test/integration/locale.test.js` — warstwa AI w pełni zamockowana).
+- **Live (OPT-IN, płatne):** `RUN_LIVE_AI_TESTS=true npm run test:ai:i18n:live` —
+  maks. **3 wywołania** (1 scenariusz/język) na realnym modelu aplikacji, z twardym
+  limitem **3.00 USD** (env `LIVE_AI_BUDGET_USD` może limit tylko obniżyć). Przed każdym
+  wywołaniem konserwatywna wycena worst-case; ocena języka lokalną heurystyką (bez
+  drugiego modelu). NIE uruchamiają się w `npm test` ani w CI; bez `RUN_LIVE_AI_TESTS`
+  lub klucza kończą się bez wywołań (koszt 0 USD).
+
 ## Uruchomienie (dev — 2 procesy)
 
 **Backend** (port 4004):

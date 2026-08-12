@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { SAFETY_DISCLAIMER_SHORT, SAFETY_HELP_TEXT } from '../hooks/useConversation';
+import { Trans, useTranslation } from 'react-i18next';
 
 /**
  * Stała mikro-stopka bezpieczeństwa (A1) — zastępuje dawną disclaimer-dymkę w czacie.
@@ -7,15 +7,23 @@ import { SAFETY_DISCLAIMER_SHORT, SAFETY_HELP_TEXT } from '../hooks/useConversat
  * zamknąć — to ujawnienie AI wymagane przez EU AI Act art. 50 (jedyne miejsce w aplikacji,
  * więc nie może znikać). Zwijać/rozwijać można jedynie numery kryzysowe pod
  * „Potrzebujesz pomocy?" — bo te są dobrą praktyką, nie wymogiem ciągłej widoczności.
+ *
+ * Wszystkie teksty (w tym pełne komunikaty z numerami) mają zatwierdzone wersje
+ * pl/en/de w zasobach i18n (safety.*). Klauzula zgody to JEDNO zdanie na język
+ * (Trans z osadzonymi linkami) — bez sklejania gramatyki z fragmentów.
  */
 export default function SafetyFooter() {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+
+  const termsLink = <a href="#regulamin" />;
+  const privacyLink = <a href="#polityka-prywatnosci" />;
 
   return (
     <div className="safety-footer">
       <div className="safety-footer-line">
         <span className="safety-footer-text">
-          {SAFETY_DISCLAIMER_SHORT}
+          {t('safety.short')}
           {/* kropka tylko na desktopie — na mobile po niej idzie małe „pomoc” */}
           <span className="ftr-full">.</span>
         </span>
@@ -26,33 +34,29 @@ export default function SafetyFooter() {
           onClick={() => setOpen((v) => !v)}
         >
           {/* pełna etykieta na desktopie, skrót na mobile (jedna linia stopki) */}
-          <span className="ftr-full">Potrzebujesz pomocy?</span>
-          <span className="ftr-short">pomoc</span>
+          <span className="ftr-full">{t('safety.helpButton')}</span>
+          <span className="ftr-short">{t('safety.helpButtonShort')}</span>
         </button>
-        {/* separator „·” tylko na desktopie — na mobile po „pomoc” idzie wprost „korzystając…” */}
+        {/* separator „·” tylko na desktopie — na mobile po „pomoc” idzie wprost klauzula */}
         <span className="safety-footer-sep ftr-full" aria-hidden="true">·</span>
         <span className="safety-footer-accept">
-          {/* desktop: pełna klauzula zgody; mobile: krótka preambuła + linki */}
-          <span className="ftr-full">Korzystając z Relvii, akceptujesz </span>
-          <span className="ftr-short">korzystając akceptujesz </span>
-          <a href="#regulamin">Regulamin</a>
-          <span className="ftr-full"> i </span>
-          <span className="ftr-short"> · </span>
-          <a href="#polityka-prywatnosci">
-            <span className="ftr-full">Politykę prywatności</span>
-            <span className="ftr-short">Prywatność</span>
-          </a>
-          <span className="ftr-full">.</span>
+          {/* desktop: pełna klauzula zgody; mobile: skrócona — oba warianty to całe zdania */}
+          <span className="ftr-full">
+            <Trans i18nKey="safety.acceptFull" components={{ terms: termsLink, privacy: privacyLink }} />
+          </span>
+          <span className="ftr-short">
+            <Trans i18nKey="safety.acceptShort" components={{ terms: termsLink, privacy: privacyLink }} />
+          </span>
         </span>
       </div>
       {open && (
         <div className="safety-footer-full" role="note">
-          <span>{SAFETY_HELP_TEXT}</span>
+          <span>{t('safety.help')}</span>
           <button
             type="button"
             className="safety-footer-close"
-            aria-label="Zamknij"
-            title="Zamknij"
+            aria-label={t('common.close')}
+            title={t('common.close')}
             onClick={() => setOpen(false)}
           >
             ✕

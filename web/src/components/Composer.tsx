@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { SenderAuthor } from '@shared/chat-contract';
 import Avatar from './Avatar';
 
@@ -24,11 +25,12 @@ interface Props {
   disabled: boolean; // blokada na czas wysyłki / zanim hook gotowy
 }
 
-// kolejność i etykiety pigułek: Ona (HER) · On (HIM) · Razem (TOGETHER)
-const PILLS: { author: SenderAuthor; label: (h: string, m: string) => string }[] = [
+// kolejność pigułek: Ona (HER) · On (HIM) · Razem (TOGETHER) — etykieta „razem"
+// z i18n, imiona przychodzą z góry (ChatScreen tłumaczy domyślne markery ról)
+const PILLS: { author: SenderAuthor; label: (h: string, m: string, together: string) => string }[] = [
   { author: 'HER', label: (h) => h },
   { author: 'HIM', label: (_h, m) => m },
-  { author: 'TOGETHER', label: () => 'Razem' },
+  { author: 'TOGETHER', label: (_h, _m, together) => together },
 ];
 
 export default function Composer({
@@ -42,6 +44,7 @@ export default function Composer({
   hisName,
   disabled,
 }: Props) {
+  const { t } = useTranslation();
   // auto-grow: po każdej zmianie treści ustaw wysokość = scrollHeight (do limitu),
   // powyżej limitu włącz scroll. Reset do 'auto' najpierw, by pole też się KURCZYŁO
   // (np. po wysłaniu, gdy text → '').
@@ -69,7 +72,7 @@ export default function Composer({
       {/* przełącznik autora — pionowa lista „Piszesz jako": Ona / On / Razem.
           Aktywna pozycja dostaje pigułkę w kolorze strony. */}
       <div className={`author-select author-select-${author.toLowerCase()}`}>
-        <span className="author-select-label">Piszesz jako</span>
+        <span className="author-select-label">{t('composer.writingAs')}</span>
         <div className="pills">
           {PILLS.map((p) => (
             <button
@@ -87,7 +90,7 @@ export default function Composer({
                   <Avatar who="HIM" size={20} alt="" />
                 </span>
               )}
-              <span className="pill-label">{p.label(herName, hisName)}</span>
+              <span className="pill-label">{p.label(herName, hisName, t('common.together'))}</span>
             </button>
           ))}
         </div>
@@ -111,7 +114,13 @@ export default function Composer({
           }}
           disabled={disabled}
         />
-        <button className="send" type="button" onClick={onSend} disabled={disabled || !text.trim()}>
+        <button
+          className="send"
+          type="button"
+          aria-label={t('composer.send')}
+          onClick={onSend}
+          disabled={disabled || !text.trim()}
+        >
           ↑
         </button>
       </div>
