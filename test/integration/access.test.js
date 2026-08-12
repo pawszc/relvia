@@ -12,6 +12,8 @@ const fs = require('fs');
 const DB_FILE = path.join(os.tmpdir(), `relvia-access-${process.pid}.sqlite`);
 process.env.ADVISOR = 'mock';
 process.env.ADVISOR_ACCESS_CONTROL = 'true'; // TEN plik testuje dostęp → kontrola ON
+// hash w spoczynku: kontrola dostępu wymaga peppera (≥32 bajty) — wartość test-only
+process.env.CAPABILITY_TOKEN_PEPPER = 'test-only-capability-pepper-at-least-32-bytes';
 process.env.ADVISOR_BUDGET_ENABLED = 'false';
 process.env.ADVISOR_GLOBAL_BUDGET_ENABLED = 'false';
 process.env.ADVISOR_RATELIMIT_ENABLED = 'false';
@@ -219,6 +221,69 @@ for (const action of ['RESOLVED', 'DISMISSED']) {
     assert.equal(await readConvTopic(a.conversationId), 'kotwica A', `${action}: kotwica przypadkiem nie zmieniona`);
   });
 }
+
+// ── HASH CAPABILITY TOKENÓW W SPOCZYNKU (v1:HMAC-SHA-256) ───────────────────
+// Surowy token widzi tylko klient; baza trzyma digest. Wyciek DB/adminu nie
+// daje bearer tokenu. Komunikaty asercji celowo NIE wypisują wartości tokenów.
+
+const DIGEST_RE = /^v1:[0-9a-f]{64}$/;
+/** Przechowywany credential konwersacji (kolumna accessToken = digest, nazwa historyczna). */
+const readStoredCredential = async (conversationId) =>
+  (await cds.db.read(CONVERSATIONS).columns('accessToken').where({ ID: conversationId }))[0].accessToken;
+
+test('nowa konwersacja przechowuje WYŁĄCZNIE HMAC (nie raw token), a raw token nadal autoryzuje', async () => {
+  const a = await srv.send('startConversation', {});
+  assert.ok(typeof a.accessToken === 'string' && a.accessToken.length > 0, 'klient dostał surowy token');
+  const stored = await readStoredCredential(a.conversationId);
+  assert.notEqual(stored, a.accessToken, 'DB nie zawiera surowego tokenu');
+  assert.match(stored, DIGEST_RE, 'DB zawiera wersjonowany digest v1:<64 hex>');
+  const st = await srv.send('conversationState', { conversationId: a.conversationId, accessToken: a.accessToken });
+  assert.equal(st.advisorMode, 'LEADING', 'surowy token nadal autoryzuje request');
+});
+
+test('digest z bazy NIE działa jako bearer token → neutralny 403', async () => {
+  const a = await srv.send('startConversation', {});
+  const stored = await readStoredCredential(a.conversationId);
+  await assert.rejects(
+    () => srv.send('conversationState', { conversationId: a.conversationId, accessToken: stored }),
+    /FORBIDDEN/i,
+    'kradzież digestu z DB/adminu nie przejmuje rozmowy',
+  );
+  await assert.rejects(
+    () => srv.send('getHistory', { conversationId: a.conversationId, accessToken: stored }),
+    /FORBIDDEN/i,
+  );
+});
+
+test('lazy migracja: legacy raw token w DB → akcja przechodzi i DB dostaje digest v1', async () => {
+  // historyczna konwersacja sprzed hashowania: surowy UUID wprost w kolumnie
+  const ID = cds.utils.uuid();
+  const legacyRaw = cds.utils.uuid();
+  await cds.db.run(INSERT.into(CONVERSATIONS).entries({ ID, accessToken: legacyRaw }));
+
+  const st = await srv.send('conversationState', { conversationId: ID, accessToken: legacyRaw });
+  assert.equal(st.advisorMode, 'LEADING', 'legacy token pozostaje ważny po wdrożeniu');
+
+  const stored = await readStoredCredential(ID);
+  assert.match(stored, DIGEST_RE, 'po poprawnym requestcie credential zmigrowany do v1');
+  assert.notEqual(stored, legacyRaw, 'digest ≠ surowy token');
+  // zmigrowany digest nadal weryfikuje ten sam surowy token
+  const st2 = await srv.send('conversationState', { conversationId: ID, accessToken: legacyRaw });
+  assert.equal(st2.advisorMode, 'LEADING');
+});
+
+test('błędny token NIE migruje legacy wartości (403, DB bez zmian)', async () => {
+  const ID = cds.utils.uuid();
+  const legacyRaw = cds.utils.uuid();
+  await cds.db.run(INSERT.into(CONVERSATIONS).entries({ ID, accessToken: legacyRaw }));
+
+  await assert.rejects(
+    () => srv.send('conversationState', { conversationId: ID, accessToken: cds.utils.uuid() }),
+    /FORBIDDEN/i,
+  );
+  const stored = await readStoredCredential(ID);
+  assert.equal(stored, legacyRaw, 'pierwotna wartość nietknięta — żaden digest z błędnego requestu');
+});
 
 test('niepoprawna action (DELETE) na własnym temacie → ok:false, zero zmian', async () => {
   const a = await srv.send('startConversation', {});

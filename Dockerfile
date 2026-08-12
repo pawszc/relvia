@@ -46,5 +46,10 @@ RUN mkdir -p /data
 EXPOSE 4004
 
 # Migracja schematu na wolumen (idempotentna dzięki schema_evolution: auto — NIE
-# czyści danych przy restarcie/redeployu) → start serwera CAP.
-CMD npx cds deploy && exec npx cds-serve
+# czyści danych przy restarcie/redeployu) → migracja capability tokenów (legacy
+# plaintext → v1:HMAC; idempotentna; wymaga sekretu CAPABILITY_TOKEN_PEPPER i
+# BLOKUJE start przy błędzie — patrz doc/DEPLOY.md) → start serwera CAP.
+# Kolejność jest częścią modelu bezpieczeństwa: migracja kończy się PRZED HTTP.
+CMD npx cds deploy \
+  && node srv/migrate-capability-tokens.js \
+  && exec npx cds-serve

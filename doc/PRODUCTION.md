@@ -53,7 +53,12 @@ Powiązane: [SAFETY.md](SAFETY.md) (bezpieczeństwo + ochrona dostępu/kosztu), 
 ### Bezpieczeństwo (twardo)
 - [x] rate‑limit `startConversation` per IP; [x] cap długości; [x] capability token.
 - [ ] **Security headers** (HSTS/CSP — `helmet`) + **limit rozmiaru body** (express).
-- [ ] **`accessToken` bez rotacji/wygaśnięcia** — akceptowalne dla MVP; rozważyć TTL/rotację.
+- [x] **Capability tokeny hashowane w spoczynku** — nowe rekordy nigdy nie zapisują surowego tokenu
+  (DB trzyma `v1:HMAC-SHA-256` z pepperem `CAPABILITY_TOKEN_PEPPER`); dotychczasowe surowe tokeny
+  migrowane automatycznie przy starcie (idempotentnie) + lazy przy poprawnym requestcie;
+  `AdminService.Conversations` to allowlist bez credentiali. Patrz SAFETY.md.
+- [ ] **Tokeny: rotacja / wygasanie / audyt** — brak rotacji peppera i tokenów, brak TTL,
+  brak audytu odczytów administratora, brak prawdziwego systemu tożsamości (konta). Dług świadomy.
 - [ ] **CAP auth „mocked"**, akcje bez `@requires` — chronione capability tokenem (model bez logowania); threat‑model udokumentowany w SAFETY.md.
 
 ### Dane / zgodność

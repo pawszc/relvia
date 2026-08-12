@@ -194,12 +194,27 @@ prywatne rozmowy WSZYSTKICH par (z `$filter/$top` = pełny eksport). Brak było 
 z rąk do rąk), więc zamiast „auth per user":
 - ChatService **nie wystawia już żadnych encji przez OData** — dostęp wyłącznie przez akcje; w handlerze
   encje DB adresowane po FQN (`'relvia.Conversations'`…), operacje idą wprost na bazę.
-- `startConversation` zwraca **`accessToken`** (niezgadywalny UUID, kolumna `Conversations.accessToken`).
-  Każda akcja konwersacji (`sendMessage`, `getHistory`, `conversationState`, `conversationUsage`,
-  `resolveParkedTopic`, `setAdvisorMode`) przechodzi przez **`assertAccess`** → **403** bez/ze złym tokenem.
-  Ten sam 403 dla nieistniejącej konwersacji → **brak enumeracji**. `assertAccess` chroni w ten sposób
-  **zasób NADRZĘDNY** (konwersację); token jest jedynym dowodem „to moja rozmowa"; front trzyma go w
-  pamięci sesji (hook), backend wymaga (`CONFIG.accessControlEnabled`, domyślnie ON).
+- `startConversation` zwraca **`accessToken`** (niezgadywalny UUID) — **surowy token widzi wyłącznie
+  klient**; front trzyma go w pamięci sesji (hook). Każda akcja konwersacji (`sendMessage`,
+  `getHistory`, `conversationState`, `conversationUsage`, `resolveParkedTopic`, `setAdvisorMode`)
+  przechodzi przez **`assertAccess`** → **403** bez/ze złym tokenem. Ten sam 403 dla nieistniejącej
+  konwersacji → **brak enumeracji**. `assertAccess` chroni w ten sposób **zasób NADRZĘDNY**
+  (konwersację); backend wymaga tokenu (`CONFIG.accessControlEnabled`, domyślnie ON).
+- **Hash w spoczynku (`srv/capability-token.js`):** baza NIE przechowuje surowego tokenu — kolumna
+  `Conversations.accessToken` (nazwa historyczna) trzyma wersjonowany digest
+  **`v1:HMAC-SHA-256(pepper, domena+token)`** z domain separation. Porównanie digestów jest
+  **timing-safe** (`crypto.timingSafeEqual`). **Pepper** (`CAPABILITY_TOKEN_PEPPER`, ≥32 bajty) to
+  sekret serwera — nie ma go w bazie, repo, fly.toml ani logach; **brak/za słaby pepper przy
+  włączonej kontroli dostępu zatrzymuje start serwera** (fail-fast zamiast degradacji do plaintextu).
+  Konsekwencje: **sam digest z bazy/adminu NIE działa jako bearer token** (403), a **utrata lub
+  nieplanowana zmiana peppera unieważnia wszystkie istniejące sesje** (świadomy koszt — rozmowy
+  pozostają czytelne dla admina, tylko tokeny przestają pasować). **Legacy plaintext** sprzed tej
+  zmiany migruje automatycznie **przed startem serwera** (`srv/migrate-capability-tokens.js`
+  w Dockerfile, idempotentnie, loguje tylko liczniki) i dodatkowo **lazy** przy pierwszym poprawnym
+  requestcie (guarded update). Dług: brak rotacji peppera / version-rollover poza prefiksem `v1`.
+- **/admin bez credentiali:** `AdminService.Conversations` to jawna **allowlist** pól (bez `*`) —
+  nie zawiera `accessToken` ani żadnego digestu; wyciek `ADMIN_API_KEY` nie daje materiału do
+  przejmowania rozmów.
 - **Zasoby PODRZĘDNE muszą być dodatkowo związane z konwersacją** — sprawdzenie rodzica nie wystarcza,
   gdy akcja przyjmuje globalny UUID zasobu-dziecka. `resolveParkedTopic` odczytuje ORAZ aktualizuje
   temat wyłącznie przez złożony scope **`{ ID: topicId, conversation_ID: conversationId }`**
@@ -210,9 +225,10 @@ z rąk do rąk), więc zamiast „auth per user":
   `topicId` zwracają ten sam neutralny wynik `{ ok: false }` — bez enumeracji i bez wycieku treści.
 - Historia: dawny odczyt OData zastąpiony akcją **`getHistory(conversationId, accessToken)`**.
 
-**Zaufany wgląd w całą bazę — `AdminService` (/admin).** Pełny OData (read-only) wszystkich encji
+**Zaufany widok operacyjny — `AdminService` (/admin).** OData (read-only) encji
 (`Conversations/Messages/ParkedTopics/UsageEvents`) dla wygodnego dostępu z innej aplikacji/narzędzia
-(curl, Excel, własny panel). **Chroniony bramką** [`srv/admin-auth.js`](../srv/admin-auth.js) (wpiętą w
+(curl, Excel, własny panel) — **celowo wyklucza credentiale**: `Conversations` to jawna allowlist pól
+bez `accessToken` (digestu). **Chroniony bramką** [`srv/admin-auth.js`](../srv/admin-auth.js) (wpiętą w
 [`server.js`](../srv/server.js) przez `cds bootstrap`): wymaga `Authorization: Bearer <ADMIN_API_KEY>`
 (porównanie `timingSafeEqual`). **Bez ustawionego `ADMIN_API_KEY` /admin jest WYŁĄCZONY (503)** — bezpieczny
 default. To NIE jest publiczny ChatService; para nigdy nie dostaje tego endpointu.
@@ -221,8 +237,9 @@ default. To NIE jest publiczny ChatService; para nigdy nie dostaje tego endpoint
 oraz smoke HTTP: `GET /chat/Messages`→**404** (encja zdjęta), `/admin/*` bez/zły token→**401**, z poprawnym→**200**.
 
 **Świadome granice:** capability token = „kto zna id+token, ma tę rozmowę" — jak nieodgadywalny link.
-Adekwatne dla apki bez logowania; mocniejsze (osobny rotowalny token, konta) to przyszłość. `accessToken`
-jest sekretem — nie logować go ani nie wstawiać w URL (tylko body POST).
+Adekwatne dla apki bez logowania; mocniejsze (rotacja tokenów/peppera, wygasanie, konta) to przyszłość.
+Surowy `accessToken` jest sekretem klienta — nie logować go ani nie wstawiać w URL (tylko body POST);
+po stronie serwera istnieje wyłącznie chwilowo w pamięci requestu (w bazie jest digest).
 
 ## Pokrycie testami (security) — automatyczne
 
@@ -235,6 +252,9 @@ Odpalane w `npm run test:all` (unit + integration + web):
 | Guardrails anti-injection obecne w prompcie; ChatService bez encji OData; AdminService read-only | `test/unit/security.test.js` |
 | Capability token: 403 bez/zły token, IDOR konwersacji, brak enumeracji, `getHistory` | `test/integration/access.test.js` |
 | Ownership ParkedTopics: PROMOTE/RESOLVED/DISMISSED cross-conversation, foreign vs missing `topicId`, regresja pozytywna | `test/integration/access.test.js` |
+| Hash tokenów w spoczynku: DB tylko digest v1, digest ≠ bearer, lazy migracja legacy, zły token nie migruje | `test/integration/access.test.js` |
+| Moduł capability-token (format/HMAC/pepper/legacy) + migracja startupowa (idempotencja, v2 przerywa, CLI exit≠0) | `test/unit/capability-token.test.js` + `test/integration/capability-token-migration.test.js` |
+| AdminService bez credentiali (allowlist + EDMX) i kolejność startu Docker (deploy→migracja→serve) | `test/unit/security.test.js` |
 | Admin bramka 503/401/200 | `test/unit/admin-auth.test.js` |
 | Budżet / globalny limit / rate-limit wiadomości | `test/integration/budget|global|ratelimit.test.js` |
 | Dławik nowych rozmów (odstęp + 30/h) | `test/unit/rate-limit.test.js` + `test/integration/newconv.test.js` |
