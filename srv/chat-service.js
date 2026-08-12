@@ -9,6 +9,10 @@
  */
 const cds = require('@sap/cds');
 const advisor = require('./advisor/advisor');
+// inwarianty decyzji na granicy handlera (idempotentne — powtórna normalizacja po
+// warstwie advisor jest poprawna) + regułowy fallback awarii zamiast twardego SUMMARIZE
+const { normalizeDecision } = require('./advisor/decisionNormalizer');
+const { decide: rulesDecide } = require('./advisor/decisionRules');
 const { costUsd } = require('./advisor/pricing');
 const { activeModel, decideModel, generateModel } = require('./advisor/models');
 const CONFIG = require('./advisor/config');
@@ -486,9 +490,16 @@ module.exports = function (srv) {
 
     let decision;
     try {
-      decision = await advisor.decide(history, state, advisorCtx);
+      // OBRONA W GŁĘBI: warstwa advisor już normalizuje, ale granica handlera nie ufa
+      // implementacji (przyszły provider / błędna podmiana) — normalizeDecision jest
+      // idempotentne, więc powtórka niczego nie zmienia dla poprawnej decyzji.
+      decision = normalizeDecision(await advisor.decide(history, state, advisorCtx), history, state);
     } catch (e) {
-      decision = { shouldSpeak: true, type: 'SUMMARIZE', kind: 'FULL', phase: state.phase };
+      // OSTATNI fallback awarii: deterministyczne reguły zamiast twardego SUMMARIZE —
+      // dzięki temu np. sygnał kryzysu (PL) nadal trafia w SAFETY_STOP, a nie w parafrazę.
+      // ZERO wywołań modelu; rulesDecide nie niesie usage, więc nic nie naliczamy podwójnie.
+      console.warn('[chat] decyzja niedostępna → regułowy fallback:', (e && e.message) || e);
+      decision = normalizeDecision(rulesDecide(history, state, advisorCtx), history, state);
     }
 
     // persystencja stanu + ewentualne zaparkowanie dygresji

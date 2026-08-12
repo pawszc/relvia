@@ -10,13 +10,42 @@ Jak aplikacja reaguje na sygnały kryzysu (przemoc, samookaleczenie, myśli samo
 
 **Bezpieczeństwo wykrywa MODEL — semantycznie i wielojęzycznie — i ma absolutny priorytet** ponad
 wszystkim (fazami, pętlą, pogłębianiem, oddawaniem głosu). Świadomie **nie** opieramy detekcji na
-regexach (po polsku się nie skalują, a celujemy w wiele języków).
+regexach (po polsku się nie skalują, a celujemy w wiele języków). Model jednak **wybiera `type`
+i proponuje pola pomocnicze**; to, że rozpoznany kryzys ZAWSZE skutkuje widoczną reakcją (dymka,
+pełny render), gwarantują deterministyczne inwarianty w kodzie — patrz „Inwarianty decyzji" niżej.
 
 **Rejestr empatii wg płci NIE dotyka bezpieczeństwa.** Profilowanie tonu doradcy wg adresata
 (`audienceSteer` w [`anthropicAdvisor.js`](../srv/advisor/anthropicAdvisor.js)) zwraca `null` dla
 `SAFETY_STOP`, `INTERVENE` i `PROTECT` — dymka kryzysowa, moderacja eskalacji i tor ochronny są
 **identyczne niezależnie od płci** adresata. Detekcja kryzysu jest symetryczna (przemoc „ze strony
 partnera" w obie strony); tor `PROTECT` (asymetria ofiara/sprawca) też nie profiluje tonu płcią.
+
+## Inwarianty decyzji — model klasyfikuje, kod decyduje o reakcji
+
+Model NIE kontroluje samodzielnie całego mechanizmu reakcji. Model **wybiera `type` i proponuje
+pola pomocnicze** (phase, topic, parkAdd, composerHint, nextSpeaker), ale **inwarianty wykonawcze
+wynikające z `type` — w szczególności `shouldSpeak` i `kind` — wyznacza deterministycznie kod** —
+wspólny normalizator
+[`srv/advisor/decisionNormalizer.js`](../srv/advisor/decisionNormalizer.js), stosowany na
+KAŻDEJ ścieżce decyzji (model, fallback reguł, mock, granica handlera). Zamyka to lukę,
+w której model zwracał np. `SAFETY_STOP` z `shouldSpeak=false` i aplikacja — mimo poprawnie
+rozpoznanego zagrożenia — pozostawała w milczeniu.
+
+| Inwariant | Gwarancja kodu (niezależnie od wartości z modelu) |
+|---|---|
+| `shouldSpeak` | wynika z typu: **WAIT jest jedynym typem milczącym**; każdy inny typ mówi |
+| `SAFETY_STOP` / `PROTECT` | **nie mogą milczeć** i nie przesuwają fazy mediacji (faza = poprzedni stan) |
+| `kind` | wynika z typu: `INTERVENE` → `INTERVENTION`, wszystko inne → `FULL` (legacy `MODERATION` nie jest emitowane) |
+| `PROTECT` | **nigdy nie jest adresowany do TOGETHER** — poprawne wskazanie reżysera (HER/HIM) zostaje; gdy konkretnego adresata nie da się ustalić bez zgadywania, PROTECT **pozostaje aktywny**, ale `nextSpeaker` jest pomijany — na wspólnym ekranie pada odpowiedź ochronna bez automatycznego przypisywania kolejnego głosu (i bez `composerHint`) |
+| `WAIT` | nie niesie instrukcji do UI (`composerHint`), nie parkuje tematu (`parkAdd`), nie przekazuje głosu (`nextSpeaker`) |
+| nieznany/zepsuty `type` | kontrolowany `DecisionInvariantError` → regułowy fallback (bez cichej zamiany typu) |
+
+Awaria warstwy decyzji w handlerze prowadzi do deterministycznego `rulesDecide` (nie do
+twardego `SUMMARIZE`) — sygnał kryzysu po polsku nadal trafia w `SAFETY_STOP` fallbacku.
+
+> Te inwarianty NIE rozwiązują pozostałego długu (jawnie otwarte): brak safety w trybie
+> `PAUSED` i po wyczerpaniu budżetu, fallback awarii modelu pozostaje PL-only, numery
+> kryzysowe w dymce nadal pochodzą z modelu, wspólny ekran w przypadkach przemocy.
 
 ## Jak działa detekcja
 
@@ -101,7 +130,8 @@ sygnał w rozmowie, a stopka jest zawsze pod ręką.
 | Kryteria `SAFETY_STOP` (decyzja) | [`srv/advisor/anthropicAdvisor.js`](../srv/advisor/anthropicAdvisor.js) → `DECIDE_SYSTEM` |
 | Ton dymki kryzysowej | tamże → `DECISION_STEER.SAFETY_STOP` |
 | Disclaimer „nie zastępuję terapeuty" | tamże → `PERSONA` |
-| Wymuszenie pełnej dymki + czyszczenie | `finalizeDecision` + [`srv/chat-service.js`](../srv/chat-service.js) `sanitizeAdvisor` |
+| Inwarianty decyzji (shouldSpeak/kind z typu, adresat PROTECT, higiena pól) | [`srv/advisor/decisionNormalizer.js`](../srv/advisor/decisionNormalizer.js) |
+| Wymuszenie pełnej dymki + czyszczenie | `finalizeDecision` + `decisionNormalizer` + [`srv/chat-service.js`](../srv/chat-service.js) `sanitizeAdvisor` |
 | Fallback PL (awaria modelu / mock) | [`srv/advisor/decisionRules.js`](../srv/advisor/decisionRules.js) → `CRISIS` |
 
 ## Ochrona dostępu do modelu i konwersacji

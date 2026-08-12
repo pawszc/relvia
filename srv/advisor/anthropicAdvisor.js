@@ -19,6 +19,9 @@ const {
 } = require('./decisionRules');
 const { activeModel, decideModel, generateModel } = require('./models');
 const CONFIG = require('./config');
+// deterministyczne inwarianty decyzji (shouldSpeak/kind z typu, higiena pól) —
+// JEDNO źródło prawdy, wspólne z mockiem i granicą handlera
+const { normalizeDecision } = require('./decisionNormalizer');
 // i18n: zwalidowane locale (pl/en/de) steruje językiem odpowiedzi i composerHint.
 // normalizeLocaleOrDefault gwarantuje, że do promptu NIGDY nie trafia surowy tekst
 // użytkownika jako „nazwa języka" — tylko element zamkniętej listy.
@@ -74,19 +77,23 @@ const REGISTER = {
     'Adresat tej tury to oboje. Rejestr neutralny — nie faworyzuj języka żadnej strony. Gdzie pasuje, działaj jak tłumacz między dwoma językami tej samej potrzeby: pokaż, że potrzeba bliskości i odruch rozwiązania to dwa sposoby na to samo, żeby każde usłyszało troskę drugiego w jego własnym języku.',
 };
 
-/** Adresat dymki: typy do OBOJGA → TOGETHER; ASK_OTHER/PROTECT → nextSpeaker; reszta → bieżący mówca. */
+/** Adresat dymki: typy do OBOJGA → TOGETHER; ASK_OTHER/PROTECT → nextSpeaker; reszta → bieżący mówca.
+ *  PROTECT bez pewnego wskazania → undefined (adresata NIE zgadujemy). */
 function replyAudience(decision, history) {
   if (['SUMMARIZE', 'REFRAME', 'PROPOSE', 'CHOOSE'].includes(decision.type)) return 'TOGETHER';
   if (decision.type === 'ASK_OTHER') return decision.nextSpeaker || 'TOGETHER';
+  // PROTECT adresuje OSOBĘ SKRZYWDZONĄ — wyłącznie jawne wskazanie reżysera (HER/HIM).
+  // Nigdy TOGETHER (ochrona jest asymetryczna) i ŻADNEGO fallbacku do bieżącego mówcy:
+  // ostatni autor nie musi być osobą skrzywdzoną, więc nie zgadujemy — undefined,
+  // a decisionNormalizer usunie nextSpeaker/composerHint (ochrona zostaje aktywna,
+  // odpowiedź pada na wspólnym ekranie bez automatycznego przypisania głosu).
+  if (decision.type === 'PROTECT') {
+    return decision.nextSpeaker === 'HER' || decision.nextSpeaker === 'HIM'
+      ? decision.nextSpeaker
+      : undefined;
+  }
   const couple = history.filter(isCouple);
   const last = couple[couple.length - 1];
-  // PROTECT adresuje OSOBĘ SKRZYWDZONĄ — reżyser wskazuje ją w nextSpeaker (HER/HIM).
-  // Nigdy TOGETHER (ochrona jest asymetryczna). Fallback: bieżący mówca — zwykle to
-  // ofiara opisująca krzywdę (gdyby reżyser nie podał strony).
-  if (decision.type === 'PROTECT') {
-    if (decision.nextSpeaker === 'HER' || decision.nextSpeaker === 'HIM') return decision.nextSpeaker;
-    return last ? last.author : 'TOGETHER';
-  }
   return last ? last.author : 'TOGETHER';
 }
 
@@ -544,11 +551,13 @@ module.exports = {
   async decide(history, state = {}, context = {}) {
     try {
       const raw = await modelDecide(history, state, context);
-      return finalizeDecision(raw, history, state);
+      // finalizeDecision (strażniki+liczniki), potem TWARDE inwarianty typu.
+      // Rzut DecisionInvariantError (np. nieznany typ z modelu) łapie catch → reguły.
+      return normalizeDecision(finalizeDecision(raw, history, state), history, state);
     } catch (e) {
       // niezawodność: model padł / zły JSON / timeout → reguły (PL fallback)
       console.warn('[advisor] decide model error → fallback do reguł:', (e && e.message) || e);
-      return rulesDecide(history, state, context);
+      return normalizeDecision(rulesDecide(history, state, context), history, state);
     }
   },
 
