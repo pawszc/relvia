@@ -84,11 +84,17 @@ const CONFIG = {
   // konwersacji (403 bez niego). Wyłączane tylko w testach, które sprawdzają INNE
   // rzeczy niż dostęp (silnik/budżet/rate limit) — dedykowany test trzyma to ON.
   accessControlEnabled: bool(process.env.ADVISOR_ACCESS_CONTROL, true),
+  // Pepper do HMAC capability tokenów (hash w spoczynku — srv/capability-token.js).
+  // CELOWO bez wartości domyślnej: brak/za krótki pepper przy włączonej kontroli
+  // dostępu ma ZATRZYMAĆ start (walidacja w ChatService), nie zdegradować do
+  // plaintextu. Wartość to sekret serwera — nigdy nie logować.
+  capabilityTokenPepper: (process.env.CAPABILITY_TOKEN_PEPPER || '').trim(),
 
-  // --- ADMIN (pełny wgląd w bazę przez /admin) ------------------------------
-  // Serwis AdminService (/admin) wystawia całą bazę przez OData, ale TYLKO dla
-  // żądań z nagłówkiem `Authorization: Bearer <adminApiKey>`. Bez ustawionego
-  // klucza /admin jest WYŁĄCZONY (503) — bezpieczny default. Sekret z env.
+  // --- ADMIN (zaufany widok operacyjny bez credentiali przez /admin) --------
+  // AdminService (/admin) wystawia read-only widok operacyjny bazy (allowlist —
+  // bez accessToken/digestów), TYLKO dla żądań z nagłówkiem
+  // `Authorization: Bearer <adminApiKey>`. Bez ustawionego klucza /admin jest
+  // WYŁĄCZONY (503) — bezpieczny default. Sekret z env.
   adminApiKey: (process.env.ADMIN_API_KEY || '').trim(),
 
   /** Aktywny model (z models.js / ADVISOR_MODEL) — bez duplikowania stawek. */

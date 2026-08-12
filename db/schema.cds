@@ -32,7 +32,12 @@ entity Conversations : cuid, managed {
   title       : String;
   herName     : String default 'Ona';    // etykieta UI — z danych, nie z kodu
   hisName     : String default 'On';
-  accessToken : String;                   // sekret-token dostępu do TEJ konwersacji (capability) — patrz SAFETY.md
+  // Credential dostępu do TEJ konwersacji (capability). NAZWA HISTORYCZNA (zgodność/
+  // migracja in-place): kolumna przechowuje WEWNĘTRZNY, wersjonowany digest
+  // `v1:HMAC-SHA-256` (srv/capability-token.js), NIE surowy bearer token. Surowy
+  // token jest zwracany klientowi przy startConversation i NIE jest utrwalany.
+  // Patrz SAFETY.md (hash w spoczynku, pepper CAPABILITY_TOKEN_PEPPER).
+  accessToken : String;
   // Język rozmowy (pl|en|de) — metadane sesji; wartość z bieżącego requestu ma
   // pierwszeństwo, a zmiana w trakcie jest tu utrwalana (shared/locales.mjs).
   locale      : String(5) default 'pl';

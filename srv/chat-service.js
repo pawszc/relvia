@@ -13,6 +13,13 @@ const advisor = require('./advisor/advisor');
 // warstwie advisor jest poprawna) + regułowy fallback awarii zamiast twardego SUMMARIZE
 const { normalizeDecision } = require('./advisor/decisionNormalizer');
 const { decide: rulesDecide } = require('./advisor/decisionRules');
+// capability tokeny: hash w spoczynku (v1:HMAC-SHA-256) — surowy token widzi tylko
+// klient; baza trzyma digest. Wszystkie porównania credentiali idą przez ten moduł.
+const {
+  validateCapabilityTokenPepper,
+  hashCapabilityToken,
+  verifyStoredCapabilityToken,
+} = require('./capability-token');
 const { costUsd } = require('./advisor/pricing');
 const { activeModel, decideModel, generateModel } = require('./advisor/models');
 const CONFIG = require('./advisor/config');
@@ -90,6 +97,15 @@ const usageColumns = (u) => ({
 });
 
 module.exports = function (srv) {
+  // FAIL-FAST KONFIGURACJI: włączona kontrola dostępu wymaga poprawnego peppera
+  // (CAPABILITY_TOKEN_PEPPER, ≥32 bajty). Brak → kontrolowane zatrzymanie startu,
+  // NIGDY cicha degradacja do zapisu plaintextu. Komunikat nazywa zmienną, nie wartość.
+  // Tryb bez kontroli dostępu (deterministyczne testy innych warstw) może działać
+  // bez peppera — wtedy kolumna accessToken zostaje pusta (null), nie plaintext.
+  if (CONFIG.accessControlEnabled) {
+    validateCapabilityTokenPepper(CONFIG.capabilityTokenPepper);
+  }
+
   // ChatService NIE wystawia już encji przez OData (bezpieczeństwo) → w handlerze
   // adresujemy encje DB bezpośrednio po FQN (operacje idą na bazę, nie przez serwis).
   const Conversations = 'relvia.Conversations';
@@ -323,19 +339,36 @@ module.exports = function (srv) {
 
   /**
    * CAPABILITY CHECK: konwersacja jest dostępna WYŁĄCZNIE dla tego, kto zna jej
-   * `accessToken` (sekret zwrócony przy startConversation). Brak konwersacji albo
-   * zły/brak tokenu → 403 (ten sam błąd w obu przypadkach — nie ujawniamy, czy dane
-   * id istnieje → brak enumeracji). Zwraca wiersz konwersacji do dalszego użycia.
+   * SUROWY `accessToken` (zwrócony przy startConversation). Baza trzyma digest
+   * v1:HMAC-SHA-256 — weryfikacja idzie przez verifyStoredCapabilityToken
+   * (timing-safe; obsługuje też legacy plaintext sprzed migracji). Jeden neutralny
+   * 403 dla WSZYSTKICH porażek: brak konwersacji, brak/zły token, uszkodzony
+   * digest, nieobsługiwana wersja — nie ujawniamy, który warunek zawiódł (brak
+   * enumeracji). Zwraca KOPIĘ wiersza konwersacji BEZ przechowywanego credentialu.
    */
   async function assertAccess(req, conversationId, accessToken) {
     if (!CONFIG.accessControlEnabled) return; // wyłączone (np. testy innych warstw)
     const conv = conversationId
       ? await SELECT.one.from(Conversations).where({ ID: conversationId })
       : null;
-    if (!conv || !conv.accessToken || !accessToken || conv.accessToken !== accessToken) {
+    const stored = conv && conv.accessToken;
+    const v = stored
+      ? verifyStoredCapabilityToken(accessToken, stored, CONFIG.capabilityTokenPepper)
+      : { ok: false, needsMigration: false };
+    if (!v.ok) {
       return req.reject(403, 'FORBIDDEN: brak dostępu do tej konwersacji');
     }
-    return conv;
+    // LAZY MIGRACJA legacy plaintextu — tylko po POPRAWNYM uwierzytelnieniu.
+    // Guarded update po starej wartości: nie nadpisze równoległej migracji
+    // (startupowej ani innej tury) i nigdy nie wykona się po błędnym tokenie.
+    if (v.needsMigration) {
+      await UPDATE(Conversations)
+        .set({ accessToken: hashCapabilityToken(accessToken, CONFIG.capabilityTokenPepper) })
+        .where({ ID: conversationId, accessToken: stored });
+    }
+    // dalszy kod handlera nie potrzebuje digestu — nie wypuszczamy go z tej funkcji
+    const { accessToken: _stored, ...safeConv } = conv;
+    return safeConv;
   }
 
   // --- utworzenie konwersacji ------------------------------------------------
@@ -362,15 +395,26 @@ module.exports = function (srv) {
       }
     }
     const ID = cds.utils.uuid();
-    // sekret-token dostępu do tej konwersacji (capability) — zwracany klientowi,
-    // wymagany przy każdej kolejnej akcji. Niezgadywalny (UUID v4).
-    const accessToken = cds.utils.uuid();
+    // sekret-token dostępu do tej konwersacji (capability) — SUROWY token istnieje
+    // tylko w pamięci tego requestu i w odpowiedzi do klienta; do bazy trafia
+    // WYŁĄCZNIE digest v1:HMAC-SHA-256 (kolumna accessToken = nazwa historyczna).
+    // Nie logować. Tryb test-only bez kontroli dostępu i bez peppera → null
+    // (nigdy zapis plaintextu jako fallback).
+    const rawAccessToken = cds.utils.uuid();
+    const storedAccessToken = CONFIG.capabilityTokenPepper
+      ? hashCapabilityToken(rawAccessToken, CONFIG.capabilityTokenPepper)
+      : null;
     // locale UI klienta → metadane sesji (walidacja: nieznane/brak ⇒ 'pl')
     const locale = normalizeLocaleOrDefault(req.data.locale);
-    await INSERT.into(Conversations).entries({ ID, title: req.data.title, accessToken, locale });
+    await INSERT.into(Conversations).entries({
+      ID,
+      title: req.data.title,
+      accessToken: storedAccessToken,
+      locale,
+    });
     // odczytujemy imiona (domyślne Ona/On z schema.cds) i zwracamy je do UI
     const conv = await SELECT.one.from(Conversations).where({ ID });
-    return { conversationId: ID, herName: conv.herName, hisName: conv.hisName, accessToken };
+    return { conversationId: ID, herName: conv.herName, hisName: conv.hisName, accessToken: rawAccessToken };
   });
 
   // --- historia jednej konwersacji (zastępuje dawny odczyt OData) ------------

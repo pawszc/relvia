@@ -75,6 +75,17 @@ test('config: domyślne progi odporności/walidacji i dostępu', () => {
   assert.equal(c.adminApiKey, '', 'brak klucza admina domyślnie (admin wyłączony)');
 });
 
+test('config: capabilityTokenPepper — brak env → pusty string (walidacja w warstwie capability-token)', () => {
+  const c = freshConfig({ CAPABILITY_TOKEN_PEPPER: undefined });
+  assert.equal(c.capabilityTokenPepper, '', 'bez env pepper jest pusty — NIE ma wartości domyślnej');
+});
+
+test('config: capabilityTokenPepper — env jest czytany, zewnętrzne spacje ucięte, bez innych transformacji', () => {
+  const value = 'unit-config-pepper-0123456789abcdef-0123456789';
+  const c = freshConfig({ CAPABILITY_TOKEN_PEPPER: `  ${value}  ` });
+  assert.equal(c.capabilityTokenPepper, value, 'trim zewnętrzny, wartość 1:1 (bez lowercase/hash)');
+});
+
 test('config: env nadpisuje globalny limit i okno', () => {
   const c = freshConfig({ ADVISOR_GLOBAL_BUDGET_USD: '50', ADVISOR_GLOBAL_WINDOW_HOURS: '12' });
   assert.equal(c.globalDailyBudgetUsd, 50);
