@@ -9,6 +9,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { __testables } = require('../../srv/advisor/anthropicAdvisor');
 const { EVENT_DOOR_BANK } = require('../../srv/advisor/decisionRules');
+const { normalizeDecision } = require('../../srv/advisor/decisionNormalizer');
 
 const {
   finalizeDecision,
@@ -31,14 +32,19 @@ test('replyAudience: typy „do obojga" → TOGETHER (BEZ PROTECT)', () => {
   }
 });
 
-test('replyAudience: PROTECT → OSOBA SKRZYWDZONA (nextSpeaker reżysera; fallback bieżący mówca); NIGDY TOGETHER', () => {
-  // reżyser wskazuje ofiarę — działa też w edge: sprawca pisał ostatni, dymka do Niej
+test('replyAudience: PROTECT → wyłącznie jawne wskazanie reżysera (HER/HIM); bez wskazania → undefined', () => {
+  // jawne wskazanie ofiary — działa też w edge: sprawca pisał ostatni, dymka do Niej
   assert.equal(replyAudience({ type: 'PROTECT', nextSpeaker: 'HER' }, [m('HIM', 'x')]), 'HER');
   reset();
   assert.equal(replyAudience({ type: 'PROTECT', nextSpeaker: 'HIM' }, [m('HER', 'x')]), 'HIM');
   reset();
-  // brak wskazania reżysera → fallback na bieżącego mówcę (zwykle ofiara opisująca krzywdę)
-  assert.equal(replyAudience({ type: 'PROTECT' }, [m('HER', 'x')]), 'HER');
+  // brak wskazania → ŻADNEGO zgadywania z ostatniego autora (nie musi być osobą skrzywdzoną)
+  assert.equal(replyAudience({ type: 'PROTECT' }, [m('HER', 'x')]), undefined);
+  reset();
+  assert.equal(replyAudience({ type: 'PROTECT' }, [m('HIM', 'x')]), undefined);
+  reset();
+  // TOGETHER nie jest poprawnym adresatem ochrony → też undefined
+  assert.equal(replyAudience({ type: 'PROTECT', nextSpeaker: 'TOGETHER' }, [m('HER', 'x')]), undefined);
 });
 
 test('replyAudience: ASK_OTHER → nextSpeaker; reszta → bieżący mówca', () => {
@@ -80,7 +86,7 @@ test('audienceBinding: ASK_OTHER→HER wiąże w formy ŻEŃSKIE; DEEPEN po HIM 
 });
 
 // ── finalizeDecision: PROTECT jak tor ochronny ──────────────────────────────
-test('finalizeDecision: PROTECT → kind FULL, zeruje liczniki, adresat = osoba skrzywdzona (NIE TOGETHER)', () => {
+test('finalizeDecision: PROTECT → kind FULL, zeruje liczniki, jawny adresat NIE jest nadpisywany', () => {
   reset();
   // reżyser tagnął ofiarę (HER) MIMO że sprawca (HIM) pisał ostatni — adresat trzyma się ofiary
   const out = finalizeDecision(
@@ -91,7 +97,31 @@ test('finalizeDecision: PROTECT → kind FULL, zeruje liczniki, adresat = osoba 
   assert.equal(out.kind, 'FULL');
   assert.equal(out.turnsSinceProgress, 0);
   assert.equal(out.escalationStreak, 0);
-  assert.equal(out.nextSpeaker, 'HER'); // skrzywdzona osoba, NIE „oboje"
+  assert.equal(out.nextSpeaker, 'HER'); // skrzywdzona osoba, NIE „oboje", NIE ostatni mówca
+});
+
+test('finalizeDecision: PROTECT bez nextSpeaker → undefined (bez zgadywania z ostatniego autora)', () => {
+  reset();
+  const out = finalizeDecision(
+    { type: 'PROTECT', shouldSpeak: true },
+    [m('HER', LONG), m('HIM', 'Sama się prosiłaś, wszystko przez ciebie.')],
+    { turnsSinceProgress: 2, escalationStreak: 1 },
+  );
+  assert.equal(out.nextSpeaker, undefined, 'ostatni pisał HIM, ale nie zakładamy, że to on jest adresatem');
+});
+
+test('pełny deterministyczny tor: finalizeDecision → normalizeDecision dla PROTECT bez adresata', () => {
+  reset();
+  const history = [m('HER', LONG), m('HIM', 'Przestań wreszcie histeryzować, zawsze wszystko psujesz.')];
+  const state = { phase: 'CORE', turnsSinceProgress: 3, escalationStreak: 1 };
+  const finalized = finalizeDecision({ type: 'PROTECT', shouldSpeak: true }, history, state);
+  const normalized = normalizeDecision(finalized, history, state);
+  assert.equal(normalized.type, 'PROTECT', 'ochrona NIE zdegradowana');
+  assert.equal(normalized.shouldSpeak, true);
+  assert.equal(normalized.kind, 'FULL');
+  assert.equal(normalized.phase, 'CORE', 'faza = poprzedni stan (tor ochronny nie przesuwa mediacji)');
+  assert.ok(!('nextSpeaker' in normalized), 'adresat nieustalony → pole nieobecne');
+  assert.ok(!('composerHint' in normalized), 'podpowiedź bez pewnego adresata → nieobecna');
 });
 
 test('finalizeDecision: SAFETY_STOP zeruje liczniki', () => {

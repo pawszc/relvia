@@ -9,6 +9,9 @@
  */
 
 const { decide, speakerLabel, isCouple } = require('./decisionRules');
+// te same twarde inwarianty co w torze anthropic (shouldSpeak/kind z typu) —
+// mock musi zachowywać się identycznie z realnym providerem na tej granicy
+const { normalizeDecision } = require('./decisionNormalizer');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -83,7 +86,7 @@ function chunkByWord(text) {
 
 module.exports = {
   decide(history, state, context = {}) {
-    return Promise.resolve(decide(history, state, context));
+    return Promise.resolve(normalizeDecision(decide(history, state, context), history, state));
   },
 
   /**

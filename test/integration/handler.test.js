@@ -162,14 +162,106 @@ test('WAIT: kontynuacja własnej myśli → doradca milczy (brak NOWEJ dymki)', 
   assert.equal(advAfter, advBefore, 'WAIT nie dodaje nowej dymki doradcy');
 });
 
-test('fallback: gdy decide rzuca błąd → handler oddaje twardy SUMMARIZE (tura nie pada)', async () => {
+test('fallback: gdy decide rzuca błąd → handler używa REGUŁ (nie twardego SUMMARIZE); tura nie pada', async () => {
   const { conversationId } = await srv.send('startConversation', {});
   await withAdvisorStub({ decide: async () => { throw new Error('boom'); } }, async () => {
     const r = await srv.send('sendMessage', { conversationId, author: 'HER', text: LONG });
     assert.ok(r.advisorMessageId, 'mimo błędu decide doradca odpowiedział');
   });
   const adv = (await messagesOf(conversationId)).find((m) => m.author === 'ADVISOR');
-  assert.equal(adv.decisionType, 'SUMMARIZE', 'twardy default reżysera po błędzie decide');
+  // rulesDecide dla pojedynczej treściwej wypowiedzi = DEEPEN (te same reguły co mock),
+  // a nie dawny twardy default SUMMARIZE oderwany od treści tury
+  assert.equal(adv.decisionType, 'DEEPEN', 'regułowy fallback zamiast twardego SUMMARIZE');
+});
+
+test('fallback awarii + sygnał kryzysu (PL) → rule-based SAFETY_STOP, nie twardy SUMMARIZE', async () => {
+  const { conversationId } = await srv.send('startConversation', {});
+  await withAdvisorStub({ decide: async () => { throw new Error('model down'); } }, async () => {
+    const r = await srv.send('sendMessage', {
+      conversationId,
+      author: 'HER',
+      text: 'Boję się o siebie, wczoraj mnie uderzył i nie wiem, co robić.',
+    });
+    assert.ok(r.advisorMessageId, 'doradca odpowiedział mimo awarii decide');
+  });
+  const adv = (await messagesOf(conversationId)).find((m) => m.author === 'ADVISOR');
+  assert.equal(adv.decisionType, 'SAFETY_STOP', 'regex CRISIS fallbacku klasyfikuje kryzys');
+  assert.equal(adv.kind, 'FULL', 'dymka kryzysowa = pełna (inwariant kind)');
+});
+
+// ── inwarianty decyzji na granicy handlera (decisionNormalizer) ─────────────
+// Stub decide symuluje PRZYSZŁEGO/zepsutego providera zwracającego decyzję
+// semantycznie sprzeczną — normalizacja w handlerze musi ją wyprostować
+// niezależnie od tego, co robi warstwa advisor.
+
+test('inwarianty: SAFETY_STOP z shouldSpeak=false → doradca MÓWI (kind=FULL), nie milczy', async () => {
+  const { conversationId } = await srv.send('startConversation', {});
+  const contradictory = async () => ({
+    type: 'SAFETY_STOP',
+    shouldSpeak: false, // luka: model rozpoznał zagrożenie, ale „kazał" milczeć
+    kind: 'INTERVENTION',
+    phase: 'AGREEMENT',
+  });
+  let r;
+  await withAdvisorStub({ decide: contradictory }, async () => {
+    r = await srv.send('sendMessage', { conversationId, author: 'HER', text: LONG });
+  });
+  assert.ok(r.advisorMessageId, 'handler NIE wybrał ścieżki milczenia (advisor.wait)');
+
+  const adv = (await messagesOf(conversationId)).find((m) => m.author === 'ADVISOR');
+  assert.ok(adv, 'powstała wiadomość ADVISOR');
+  assert.equal(adv.decisionType, 'SAFETY_STOP');
+  assert.equal(adv.kind, 'FULL', 'kind wyznaczony z typu, nie z decyzji modelu');
+});
+
+test('inwarianty: WAIT z shouldSpeak=true + composerHint/parkAdd → milczenie bez skutków ubocznych', async () => {
+  const { conversationId } = await srv.send('startConversation', {});
+  const noisyWait = async () => ({
+    type: 'WAIT',
+    shouldSpeak: true, // sprzeczność: WAIT nie może generować dymki
+    kind: 'INTERVENTION',
+    phase: 'OPENING',
+    composerHint: 'Nie powinno przejść',
+    parkAdd: 'Nie powinno zostać zaparkowane',
+  });
+  let r;
+  await withAdvisorStub({ decide: noisyWait }, async () => {
+    r = await srv.send('sendMessage', { conversationId, author: 'HER', text: LONG });
+  });
+  assert.equal(r.advisorMessageId, null, 'WAIT → doradca milczy');
+
+  const msgs = await messagesOf(conversationId);
+  assert.equal(msgs.filter((m) => m.author === 'ADVISOR').length, 0, 'brak nowej dymki ADVISOR');
+
+  const st = await srv.send('conversationState', { conversationId });
+  assert.equal(st.parkedTopics.length, 0, 'parkAdd usunięty przez normalizator → nic nie zaparkowano');
+
+  const conv = await cds.db.read('relvia.Conversations').where({ ID: conversationId });
+  assert.ok(!conv[0].lastComposerHint, 'composerHint usunięty → nie utrwalony na konwersacji');
+});
+
+test('inwarianty: PROTECT bez nextSpeaker przy historii TOGETHER → ochrona AKTYWNA, bez degradacji', async () => {
+  const { conversationId } = await srv.send('startConversation', {});
+  const protectNoAddressee = async () => ({
+    type: 'PROTECT',
+    shouldSpeak: false, // sprzeczność: PROTECT nie może milczeć
+    kind: 'INTERVENTION',
+    phase: 'AGREEMENT', // tor ochronny nie przesuwa mediacji
+    // brak nextSpeaker — DECIDE_SCHEMA na to pozwala (pole niewymagane)
+  });
+  let r;
+  await withAdvisorStub({ decide: protectNoAddressee }, async () => {
+    r = await srv.send('sendMessage', { conversationId, author: 'TOGETHER', text: LONG });
+  });
+  assert.ok(r.advisorMessageId, 'powstała odpowiedź ochronna (PROTECT nie zdegradowany do milczenia)');
+
+  const adv = (await messagesOf(conversationId)).find((m) => m.author === 'ADVISOR');
+  assert.ok(adv, 'powstała wiadomość ADVISOR');
+  assert.equal(adv.decisionType, 'PROTECT', 'decyzja NIE zdegradowana do SUMMARIZE/DEEPEN/INTERVENE');
+  assert.equal(adv.kind, 'FULL', 'kind wyznaczony z typu');
+
+  const st = await srv.send('conversationState', { conversationId });
+  assert.equal(st.phase, 'OPENING', 'faza rozmowy zachowana (AGREEMENT z decyzji odrzucone)');
 });
 
 test('resolveParkedTopic: PROMOTE ustawia kotwicę na temat i zamyka go (OPEN→RESOLVED)', async () => {
