@@ -33,6 +33,9 @@ entity Conversations : cuid, managed {
   herName     : String default 'Ona';    // etykieta UI — z danych, nie z kodu
   hisName     : String default 'On';
   accessToken : String;                   // sekret-token dostępu do TEJ konwersacji (capability) — patrz SAFETY.md
+  // Język rozmowy (pl|en|de) — metadane sesji; wartość z bieżącego requestu ma
+  // pierwszeństwo, a zmiana w trakcie jest tu utrwalana (shared/locales.mjs).
+  locale      : String(5) default 'pl';
   messages : Composition of many Messages on messages.conversation = $self;
 
   // --- stan reżysera (silnik rozmowy) ---

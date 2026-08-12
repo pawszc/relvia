@@ -1,0 +1,99 @@
+{
+  "app": {
+    "languageLabel": "Język"
+  },
+  "common": {
+    "her": "Ona",
+    "him": "On",
+    "together": "Razem",
+    "both": "oboje",
+    "advisor": "Doradca",
+    "close": "Zamknij"
+  },
+  "header": {
+    "advisorToggleGroup": "Tryb doradcy",
+    "advisorLabel": "Doradca:",
+    "modeLeading": "Rozmawia",
+    "modeListening": "Tylko słucha",
+    "avatarsTitle": "Doradca · {{her}} · {{his}}"
+  },
+  "phases": {
+    "OPENING": "Otwarcie",
+    "PERSPECTIVE_A": "Perspektywa I",
+    "PERSPECTIVE_B": "Perspektywa II",
+    "PARAPHRASE": "Parafraza",
+    "CORE": "Sedno",
+    "AGREEMENT": "Ustalenia",
+    "ribbonLabel": "Faza",
+    "ribbonTitle": "Faza {{n}}/{{total}}",
+    "ribbonGoal": "→ Sedno · Ustalenia"
+  },
+  "composer": {
+    "writingAs": "Piszesz jako",
+    "send": "Wyślij"
+  },
+  "conversation": {
+    "welcome": "Cześć. Możecie porozmawiać tu o czymś ważnym, codziennym albo zupełnie drobnym. Pomogę Wam przejść przez temat krok po kroku, lepiej się zrozumieć i łatwiej dogadać. Zacznijcie osobno albo razem.",
+    "emptyLeft": "Wybierzcie, kto zaczyna",
+    "emptyRight": "albo zacznijcie wspólnie",
+    "togetherLabel": "Powiedzieliście to razem",
+    "interveneLabel": "chwila spokoju",
+    "sending": "wysyłanie…",
+    "retry": "Nie wysłano · wyślij ponownie"
+  },
+  "advisorStatus": {
+    "typing": "Doradca pisze…",
+    "listening": "Doradca słucha…",
+    "probing": "Doradca dopytuje…",
+    "calming": "Doradca łagodzi napięcie…",
+    "silent": "Doradca słucha w milczeniu…",
+    "presenceWaitFor": "czeka na odpowiedź",
+    "presenceWaitBoth": "czeka na Waszą wspólną odpowiedź"
+  },
+  "parked": {
+    "title": "Do omówienia później",
+    "promote": "wróćmy teraz",
+    "resolved": "załatwione",
+    "dismiss": "odrzuć"
+  },
+  "placeholders": {
+    "DEEPEN": "Śmiało, rozwiń to — co czujesz najmocniej?",
+    "CLARIFY": "Napisz konkretnie — jeden przykład zamiast oceny…",
+    "NARROW": "Jeden konkretny przykład z ostatniego tygodnia…",
+    "REFRAME": "Powiedz wprost, o co Ci najbardziej chodzi…",
+    "CHOOSE": "Który wątek jest teraz dla Was najważniejszy?",
+    "PROPOSE": "Zaproponuj mały krok do wypróbowania…",
+    "INTERVENE": "Spróbuj zacząć od „czuję…\" zamiast oceny…",
+    "askOther": "Twoja kolej, {{name}} — jak Ty to widzisz?",
+    "together": "Piszecie razem…",
+    "writeAs": "Napisz jako {{name}}…",
+    "paused": "Piszcie do siebie — doradca tylko słucha…",
+    "idle": "Wróćcie, gdy będziecie gotowi — napiszcie razem, jak poszło…"
+  },
+  "safety": {
+    "short": "Relvia to doradca AI a nie terapeuta",
+    "full": "Relvia to doradca AI, nie terapeuta ani pomoc w nagłych sytuacjach. Jeśli potrzebujesz pilnej pomocy, zadzwoń pod 112. Wsparcie emocjonalne: całodobowy telefon zaufania 116 123; przy przemocy — Niebieska Linia 800 120 002.",
+    "help": "Jeśli potrzebujesz pilnej pomocy, zadzwoń pod 112. Wsparcie emocjonalne: całodobowy telefon zaufania 116 123; przy przemocy — Niebieska Linia 800 120 002.",
+    "helpButton": "Potrzebujesz pomocy?",
+    "helpButtonShort": "pomoc",
+    "acceptFull": "Korzystając z Relvii, akceptujesz <terms>Regulamin</terms> i <privacy>Politykę prywatności</privacy>.",
+    "acceptShort": "korzystając akceptujesz <terms>Regulamin</terms> · <privacy>Prywatność</privacy>"
+  },
+  "legal": {
+    "back": "← wróć do Relvii",
+    "testBannerTitle": "Zamknięta wersja testowa.",
+    "testBannerBody": "Relvia jest udostępniana wyłącznie zaproszonym testerom i nie jest jeszcze usługą publiczną. Dziękujemy, że jesteście z nami na tym etapie."
+  },
+  "errors": {
+    "RATE_LIMIT": "Za szybko — daj chwilę przerwy i spróbuj ponownie.",
+    "MESSAGE_TOO_LONG": "Wiadomość jest za długa — skróć ją i spróbuj ponownie.",
+    "EMPTY_TEXT": "Wiadomość jest pusta.",
+    "FORBIDDEN": "Brak dostępu do tej rozmowy.",
+    "ADVISOR_ERROR": "Doradca nie mógł teraz odpowiedzieć. Spróbujcie ponownie.",
+    "NOT_CONFIRMED": "Backend nie potwierdził wysłania.",
+    "SEND_FAILED": "Nie udało się wysłać.",
+    "CREATE_FAILED": "Nie udało się utworzyć rozmowy.",
+    "MODE_FAILED": "Nie udało się zmienić trybu doradcy.",
+    "generic": "Coś poszło nie tak. Spróbuj ponownie."
+  }
+}

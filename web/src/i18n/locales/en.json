@@ -1,0 +1,99 @@
+{
+  "app": {
+    "languageLabel": "Language"
+  },
+  "common": {
+    "her": "She",
+    "him": "He",
+    "together": "Together",
+    "both": "both of you",
+    "advisor": "Advisor",
+    "close": "Close"
+  },
+  "header": {
+    "advisorToggleGroup": "Advisor mode",
+    "advisorLabel": "Advisor:",
+    "modeLeading": "Talks",
+    "modeListening": "Just listens",
+    "avatarsTitle": "Advisor · {{her}} · {{his}}"
+  },
+  "phases": {
+    "OPENING": "Opening",
+    "PERSPECTIVE_A": "Perspective I",
+    "PERSPECTIVE_B": "Perspective II",
+    "PARAPHRASE": "Paraphrase",
+    "CORE": "The core",
+    "AGREEMENT": "Agreements",
+    "ribbonLabel": "Phase",
+    "ribbonTitle": "Phase {{n}}/{{total}}",
+    "ribbonGoal": "→ The core · Agreements"
+  },
+  "composer": {
+    "writingAs": "Writing as",
+    "send": "Send"
+  },
+  "conversation": {
+    "welcome": "Hi. This is a space to talk about something important, something everyday, or something completely small. I'll help you go through the topic step by step, understand each other better and find agreement more easily. Start separately or together.",
+    "emptyLeft": "Choose who starts",
+    "emptyRight": "or begin together",
+    "togetherLabel": "You said this together",
+    "interveneLabel": "a moment of calm",
+    "sending": "sending…",
+    "retry": "Not sent · send again"
+  },
+  "advisorStatus": {
+    "typing": "The advisor is writing…",
+    "listening": "The advisor is listening…",
+    "probing": "The advisor is asking further…",
+    "calming": "The advisor is easing the tension…",
+    "silent": "The advisor is listening quietly…",
+    "presenceWaitFor": "is waiting for a reply from",
+    "presenceWaitBoth": "is waiting for your joint reply"
+  },
+  "parked": {
+    "title": "To talk about later",
+    "promote": "let's do it now",
+    "resolved": "done",
+    "dismiss": "dismiss"
+  },
+  "placeholders": {
+    "DEEPEN": "Go ahead, say more — what do you feel most strongly?",
+    "CLARIFY": "Be specific — one example instead of a judgment…",
+    "NARROW": "One concrete example from the past week…",
+    "REFRAME": "Say directly what matters most to you…",
+    "CHOOSE": "Which topic matters most to you both right now?",
+    "PROPOSE": "Suggest a small step to try out…",
+    "INTERVENE": "Try starting with \"I feel…\" instead of a judgment…",
+    "askOther": "Your turn, {{name}} — how do you see it?",
+    "together": "You are writing together…",
+    "writeAs": "Write as {{name}}…",
+    "paused": "Write to each other — the advisor is just listening…",
+    "idle": "Come back when you're ready — write together how it went…"
+  },
+  "safety": {
+    "short": "Relvia is an AI advisor, not a therapist",
+    "full": "Relvia is an AI advisor, not a therapist or an emergency service. If you need urgent help, call 112. Emotional support in Poland: the 24/7 helpline 116 123; in cases of violence — the \"Blue Line\" 800 120 002.",
+    "help": "If you need urgent help, call 112. Emotional support in Poland: the 24/7 helpline 116 123; in cases of violence — the \"Blue Line\" 800 120 002.",
+    "helpButton": "Need help?",
+    "helpButtonShort": "help",
+    "acceptFull": "By using Relvia, you accept the <terms>Terms of Use</terms> and the <privacy>Privacy Policy</privacy>.",
+    "acceptShort": "by using you accept <terms>Terms</terms> · <privacy>Privacy</privacy>"
+  },
+  "legal": {
+    "back": "← back to Relvia",
+    "testBannerTitle": "Closed test version.",
+    "testBannerBody": "Relvia is available to invited testers only and is not a public service yet. Thank you for being with us at this stage."
+  },
+  "errors": {
+    "RATE_LIMIT": "Too fast — give it a moment and try again.",
+    "MESSAGE_TOO_LONG": "The message is too long — shorten it and try again.",
+    "EMPTY_TEXT": "The message is empty.",
+    "FORBIDDEN": "You don't have access to this conversation.",
+    "ADVISOR_ERROR": "The advisor couldn't respond right now. Please try again.",
+    "NOT_CONFIRMED": "The server didn't confirm the message was sent.",
+    "SEND_FAILED": "Sending failed.",
+    "CREATE_FAILED": "Could not start the conversation.",
+    "MODE_FAILED": "Could not change the advisor mode.",
+    "generic": "Something went wrong. Please try again."
+  }
+}

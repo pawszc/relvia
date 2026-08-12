@@ -25,7 +25,10 @@ service ChatService @(path: '/chat') {
    * sekret-token, który klient MUSI dołączać do każdej kolejnej akcji tej konwersacji.
    */
   action startConversation(
-    title : String
+    title  : String,
+    // Język UI klienta (pl|en|de) — zapisywany w metadanych konwersacji.
+    // Brak/nieznany (starszy klient) ⇒ backend normalizuje do 'pl'.
+    locale : String
   ) returns {
     conversationId : UUID;
     herName        : String;
@@ -59,7 +62,10 @@ service ChatService @(path: '/chat') {
     conversationId : UUID,
     author         : db.Author,
     text           : String,
-    accessToken    : String
+    accessToken    : String,
+    // Język UI w chwili wysyłki — ma PIERWSZEŃSTWO nad locale konwersacji i jest
+    // na niej utrwalany (zmiana języka obowiązuje od następnej odpowiedzi doradcy).
+    locale         : String
   ) returns {
     advisorMessageId : UUID;
   };
@@ -98,7 +104,9 @@ service ChatService @(path: '/chat') {
   action setAdvisorMode(
     conversationId : UUID,
     mode           : db.AdvisorMode,
-    accessToken    : String
+    accessToken    : String,
+    // Język deterministycznego pożegnania doradcy przy pauzie (pl|en|de).
+    locale         : String
   ) returns {
     ok : Boolean;
   };

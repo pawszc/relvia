@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+
 /**
  * Strony prawne (Regulamin / Polityka prywatności).
  *
@@ -142,13 +144,13 @@ function Privacy() {
 }
 
 export default function LegalPage({ doc }: { doc: LegalDoc }) {
+  const { t } = useTranslation();
   return (
     <div className="card legal-page">
       <div className="legal-inner">
-        <a className="legal-back" href="#">← wróć do Relvii</a>
+        <a className="legal-back" href="#">{t('legal.back')}</a>
         <div className="legal-test-banner">
-          🧪 <strong>Zamknięta wersja testowa.</strong> Relvia jest udostępniana wyłącznie zaproszonym
-          testerom i nie jest jeszcze usługą publiczną. Dziękujemy, że jesteście z nami na tym etapie.
+          🧪 <strong>{t('legal.testBannerTitle')}</strong> {t('legal.testBannerBody')}
         </div>
         {doc === 'terms' ? <Terms /> : <Privacy />}
       </div>

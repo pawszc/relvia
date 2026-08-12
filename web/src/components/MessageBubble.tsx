@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import type { UiMessage } from '../hooks/useConversation';
 import Avatar from './Avatar';
 
@@ -38,7 +39,8 @@ const TypingDots = () => (
  *  - 'sent'/brak → nic.
  */
 function Status({ message, onRetry }: { message: UiMessage; onRetry: (id: string) => void }) {
-  if (message.status === 'sending') return <div className="msg-status">wysyłanie…</div>;
+  const { t } = useTranslation();
+  if (message.status === 'sending') return <div className="msg-status">{t('conversation.sending')}</div>;
   if (message.status === 'failed') {
     return (
       <button
@@ -46,7 +48,7 @@ function Status({ message, onRetry }: { message: UiMessage; onRetry: (id: string
         className="msg-status msg-retry"
         onClick={() => message.clientId && onRetry(message.clientId)}
       >
-        Nie wysłano · wyślij ponownie
+        {t('conversation.retry')}
       </button>
     );
   }
@@ -54,6 +56,7 @@ function Status({ message, onRetry }: { message: UiMessage; onRetry: (id: string
 }
 
 export default function MessageBubble({ message, herName, hisName, advisorSide, typing, onRetry }: Props) {
+  const { t } = useTranslation();
   // jeden case na autora — to tu mapujemy model (Author) na render „dwa brzegi"
   switch (message.author) {
     case 'ADVISOR': {
@@ -62,7 +65,7 @@ export default function MessageBubble({ message, herName, hisName, advisorSide, 
       if (small) {
         return (
           <div className="row row-intervene">
-            <div className="label label-intervene">chwila spokoju</div>
+            <div className="label label-intervene">{t('conversation.interveneLabel')}</div>
             <div className="bubble bubble-intervene">{typing ? <TypingDots /> : message.text}</div>
           </div>
         );
@@ -99,7 +102,7 @@ export default function MessageBubble({ message, herName, hisName, advisorSide, 
           <div className="label label-together">
             <span className="dot dot-her" />
             <span className="dot dot-him" />
-            Powiedzieliście to razem
+            {t('conversation.togetherLabel')}
           </div>
           <div className="bubble bubble-together">{message.text}</div>
           <Status message={message} onRetry={onRetry} />

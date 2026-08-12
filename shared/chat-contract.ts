@@ -11,6 +11,10 @@
  * a nie refaktorem UI ani logiki CAP.
  */
 
+// Locale UI/AI — jedno źródło prawdy listy języków: shared/locales.mjs.
+export type { Locale } from './locales.mjs';
+import type { Locale } from './locales.mjs';
+
 export type Author = 'HER' | 'HIM' | 'TOGETHER' | 'ADVISOR';
 
 /** Autorzy dostępni dla pary (doradca odpowiada sam). */
@@ -116,6 +120,10 @@ export interface SendMessageRequest {
   author: SenderAuthor;
   text: string;
   accessToken?: string; // capability token konwersacji (realny klient HTTP zawsze dołącza)
+  // Język UI w chwili wysyłki — steruje językiem NASTĘPNEJ odpowiedzi doradcy
+  // (wartość z requestu ma pierwszeństwo nad locale zapisanym na konwersacji).
+  // Brak (starszy klient) ⇒ backend bierze locale konwersacji, a ostatecznie 'pl'.
+  locale?: Locale;
 }
 
 /**
@@ -172,7 +180,8 @@ export type UiConversationState = Pick<
 // Uwaga: `accessToken` jest opcjonalny w sygnaturach (mock offline go ignoruje),
 // ale realny klient HTTP ZAWSZE go dołącza, a backend go WYMAGA (403 bez niego).
 export interface ChatClient {
-  startConversation(title?: string): Promise<ConversationMeta>;
+  /** `locale` = język UI przy tworzeniu — zapisywany w metadanych konwersacji. */
+  startConversation(title?: string, locale?: Locale): Promise<ConversationMeta>;
   getHistory(conversationId: string, accessToken?: string): Promise<ChatMessage[]>;
   sendMessage(req: SendMessageRequest): AsyncIterable<ChatStreamEvent>;
   /** Stan reżysera (faza/kotwica/parking) — do odtworzenia UI po odświeżeniu. */
@@ -184,14 +193,23 @@ export interface ChatClient {
     action: ParkedAction,
     accessToken?: string,
   ): Promise<void>;
-  /** Pauza/wznowienie doradcy (krok 4): PAUSED = „rozmawiajcie sami", LEADING = wróć. */
-  setAdvisorMode(conversationId: string, mode: AdvisorMode, accessToken?: string): Promise<void>;
+  /** Pauza/wznowienie doradcy (krok 4): PAUSED = „rozmawiajcie sami", LEADING = wróć.
+   *  `locale` steruje językiem deterministycznego pożegnania doradcy przy pauzie. */
+  setAdvisorMode(
+    conversationId: string,
+    mode: AdvisorMode,
+    accessToken?: string,
+    locale?: Locale,
+  ): Promise<void>;
 }
 
 /** Kontekst przekazywany do warstwy AI (np. imiona do prefiksów mówców). */
 export interface AdvisorContext {
   herName?: string;
   hisName?: string;
+  // Zwalidowany język odpowiedzi (deterministyczna dyrektywa w promptach).
+  // ZAWSZE pochodzi z normalizeLocale (nigdy surowy tekst użytkownika).
+  locale?: Locale;
 }
 
 /**

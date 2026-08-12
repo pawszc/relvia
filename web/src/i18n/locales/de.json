@@ -1,0 +1,99 @@
+{
+  "app": {
+    "languageLabel": "Sprache"
+  },
+  "common": {
+    "her": "Sie",
+    "him": "Er",
+    "together": "Zusammen",
+    "both": "euch beide",
+    "advisor": "Berater",
+    "close": "Schließen"
+  },
+  "header": {
+    "advisorToggleGroup": "Beratermodus",
+    "advisorLabel": "Berater:",
+    "modeLeading": "Spricht mit",
+    "modeListening": "Hört nur zu",
+    "avatarsTitle": "Berater · {{her}} · {{his}}"
+  },
+  "phases": {
+    "OPENING": "Einstieg",
+    "PERSPECTIVE_A": "Perspektive I",
+    "PERSPECTIVE_B": "Perspektive II",
+    "PARAPHRASE": "Paraphrase",
+    "CORE": "Der Kern",
+    "AGREEMENT": "Vereinbarungen",
+    "ribbonLabel": "Phase",
+    "ribbonTitle": "Phase {{n}}/{{total}}",
+    "ribbonGoal": "→ Der Kern · Vereinbarungen"
+  },
+  "composer": {
+    "writingAs": "Du schreibst als",
+    "send": "Senden"
+  },
+  "conversation": {
+    "welcome": "Hallo. Hier könnt ihr über etwas Wichtiges, etwas Alltägliches oder etwas ganz Kleines sprechen. Ich helfe euch, das Thema Schritt für Schritt durchzugehen, einander besser zu verstehen und leichter zusammenzufinden. Fangt einzeln an oder gemeinsam.",
+    "emptyLeft": "Wählt, wer anfängt",
+    "emptyRight": "oder beginnt gemeinsam",
+    "togetherLabel": "Das habt ihr gemeinsam gesagt",
+    "interveneLabel": "kurz durchatmen",
+    "sending": "wird gesendet…",
+    "retry": "Nicht gesendet · erneut senden"
+  },
+  "advisorStatus": {
+    "typing": "Der Berater schreibt…",
+    "listening": "Der Berater hört zu…",
+    "probing": "Der Berater fragt nach…",
+    "calming": "Der Berater beruhigt die Lage…",
+    "silent": "Der Berater hört still zu…",
+    "presenceWaitFor": "wartet auf eine Antwort von",
+    "presenceWaitBoth": "wartet auf eure gemeinsame Antwort"
+  },
+  "parked": {
+    "title": "Für später aufgehoben",
+    "promote": "jetzt besprechen",
+    "resolved": "erledigt",
+    "dismiss": "verwerfen"
+  },
+  "placeholders": {
+    "DEEPEN": "Nur zu, erzähl mehr — was fühlst du am stärksten?",
+    "CLARIFY": "Werd konkret — ein Beispiel statt einer Bewertung…",
+    "NARROW": "Ein konkretes Beispiel aus der letzten Woche…",
+    "REFRAME": "Sag offen, worum es dir wirklich geht…",
+    "CHOOSE": "Welches Thema ist euch gerade am wichtigsten?",
+    "PROPOSE": "Schlag einen kleinen Schritt zum Ausprobieren vor…",
+    "INTERVENE": "Versuch, mit „Ich fühle …\" zu beginnen statt mit einer Bewertung…",
+    "askOther": "Du bist dran, {{name}} — wie siehst du das?",
+    "together": "Ihr schreibt gemeinsam…",
+    "writeAs": "Schreib als {{name}}…",
+    "paused": "Schreibt einander — der Berater hört nur zu…",
+    "idle": "Kommt zurück, wenn ihr so weit seid — schreibt gemeinsam, wie es gelaufen ist…"
+  },
+  "safety": {
+    "short": "Relvia ist ein KI-Berater und kein Therapeut",
+    "full": "Relvia ist ein KI-Berater — kein Therapeut und keine Notfallhilfe. Wenn du dringend Hilfe brauchst, ruf die 112 an. Emotionale Unterstützung in Polen: Telefonseelsorge 116 123 (rund um die Uhr); bei Gewalt — die „Blaue Linie\" 800 120 002.",
+    "help": "Wenn du dringend Hilfe brauchst, ruf die 112 an. Emotionale Unterstützung in Polen: Telefonseelsorge 116 123 (rund um die Uhr); bei Gewalt — die „Blaue Linie\" 800 120 002.",
+    "helpButton": "Brauchst du Hilfe?",
+    "helpButtonShort": "Hilfe",
+    "acceptFull": "Mit der Nutzung von Relvia akzeptierst du die <terms>Nutzungsbedingungen</terms> und die <privacy>Datenschutzerklärung</privacy>.",
+    "acceptShort": "mit der Nutzung akzeptierst du <terms>Nutzungsbedingungen</terms> · <privacy>Datenschutz</privacy>"
+  },
+  "legal": {
+    "back": "← zurück zu Relvia",
+    "testBannerTitle": "Geschlossene Testversion.",
+    "testBannerBody": "Relvia steht nur eingeladenen Testerinnen und Testern zur Verfügung und ist noch kein öffentlicher Dienst. Danke, dass ihr in dieser Phase dabei seid."
+  },
+  "errors": {
+    "RATE_LIMIT": "Zu schnell — warte einen Moment und versuch es noch einmal.",
+    "MESSAGE_TOO_LONG": "Die Nachricht ist zu lang — kürze sie und versuch es noch einmal.",
+    "EMPTY_TEXT": "Die Nachricht ist leer.",
+    "FORBIDDEN": "Kein Zugriff auf dieses Gespräch.",
+    "ADVISOR_ERROR": "Der Berater konnte gerade nicht antworten. Versucht es bitte noch einmal.",
+    "NOT_CONFIRMED": "Der Server hat den Versand nicht bestätigt.",
+    "SEND_FAILED": "Senden fehlgeschlagen.",
+    "CREATE_FAILED": "Das Gespräch konnte nicht erstellt werden.",
+    "MODE_FAILED": "Der Beratermodus konnte nicht geändert werden.",
+    "generic": "Etwas ist schiefgelaufen. Bitte versuch es noch einmal."
+  }
+}

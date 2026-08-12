@@ -562,6 +562,53 @@ body {
   color: #8a5f3c;
 }
 
+/* przełącznik języka — natywny <select> w skórce „pill" spójnej z advisor-toggle.
+   appearance:none zdejmuje systemową ramkę, ale rozwijana lista zostaje natywna
+   (na mobile systemowy picker), więc rosnąca lista języków nic tu nie psuje. */
+.lang-switch {
+  display: inline-flex;
+  align-items: center;
+}
+.lang-select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid #ddd4c4;
+  border-radius: 999px;
+  /* własny chevron — inline SVG, żeby nie dokładać requestu */
+  background:
+    #f1ebe0
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238a7f63' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    no-repeat right 9px center;
+  background-size: 9px 6px;
+  padding: 5px 25px 5px 11px;
+  font: 600 11px 'Hanken Grotesk';
+  letter-spacing: 0.02em;
+  color: #6f6753;
+  cursor: pointer;
+  max-width: 160px;
+  text-overflow: ellipsis;
+}
+.lang-select:hover {
+  border-color: #cfc4ae;
+}
+.lang-select:focus-visible {
+  outline: 2px solid #a89a78;
+  outline-offset: 1px;
+}
+/* lista rozwijana dziedziczy kolory systemowe — wymuszamy czytelne tło */
+.lang-select option {
+  background: #fff;
+  color: #4a4436;
+}
+/* na wąskich ekranach kontrolka ma się mieścić obok awatarów */
+@media (max-width: 560px) {
+  .lang-select {
+    max-width: 120px;
+    padding: 5px 22px 5px 8px;
+    background-position: right 7px center;
+  }
+}
+
 /* panel „do omówienia później" — zaparkowane dygresje */
 .parked-panel {
   flex: none;
